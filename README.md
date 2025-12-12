@@ -1,46 +1,74 @@
 # AI Student Support Navigator
+
 > An AI-powered web application that helps newly arrived and multilingual students understand school systems through personalized, simplified guidance using Microsoft AI.
+
+---
 
 ## Problem
 
-Newly arrived and multilingual students often struggle to understand school rules, administrative processes, and available support services. 
-Schools lack scalable tools to provide personalized, accessible guidance without increasing staff workload.
+Newly arrived and multilingual students often struggle to understand school rules, administrative procedures, and available support services.  
+School information is usually complex, text-heavy, and not adapted to students with limited language proficiency.
+
+At the same time, teachers and counselors lack scalable tools to provide personalized explanations to every student without increasing their workload.
+
+---
 
 ## Solution
 
-AI Student Support Navigator is a web-based chat application that provides students with clear, age-appropriate, and multilingual explanations of school-related topics.
+AI Student Support Navigator is a web-based chat application that provides clear, age-appropriate, and multilingual explanations of school-related topics.
 
-The system adapts each response to the student’s language proficiency and education level, ensuring inclusive and accessible support.
+The application adapts each response to the student’s language proficiency and education level, making school information more accessible, inclusive, and easier to understand.
+
+---
 
 ## Key Features (MVP)
 
 - Chat-based interface for asking school-related questions
-- Personalized responses based on student age and language preference
-- Simplified, step-by-step explanations
-- Multilingual support
-- Built with Microsoft Azure AI services
+- Personalized responses based on student age range and preferred language
+- Simplified, step-by-step explanations using clear vocabulary
+- Multilingual support for diverse student populations
+- Built around Microsoft Azure AI services
+
+---
 
 ## Microsoft AI Usage
 
-This project is built around Microsoft AI services that are core to its functionality:
+This project relies on Microsoft AI services that are core to its functionality:
 
 - **Azure AI Language**
-  - Detects the student’s input language
-  - Identifies the intent of the question (e.g. school rules, asking for help, activities)
+  - Detects the language of the student’s input
+  - Identifies the intent of the question, such as school rules, asking for help, or joining activities
 
 - **Azure OpenAI**
-  - Generates personalized, simplified explanations
-  - Adapts language complexity to the student’s age and proficiency level
+  - Generates personalized and simplified explanations
+  - Adapts the complexity of responses to the student’s age and language proficiency
+  - Produces supportive, inclusive guidance in a conversational format
 
-These services are essential to the application and enable scalable, inclusive student support.
+Without these Microsoft AI services, the application would not be able to deliver scalable, adaptive student support.
+
+---
 
 ## Architecture Overview
 
-1. The student submits a question via the web chat interface
-2. The backend sends the message to Azure AI Language for intent and language detection
-3. The structured output is passed to Azure OpenAI
-4. Azure OpenAI generates a simplified, personalized response
-5. The response is returned and displayed in the chat interface
+1. The student submits a question through the web-based chat interface  
+2. The backend sends the message to Azure AI Language to detect intent and language  
+3. The structured output is passed to Azure OpenAI  
+4. Azure OpenAI generates a simplified, personalized response  
+5. The response is returned and displayed in the chat interface  
+
+This architecture enables real-time, inclusive support using Microsoft AI.
+
+---
+
+## Demo Scenarios
+
+The MVP demonstrates the following realistic school scenarios:
+
+- Understanding school rules and expectations
+- Knowing who to ask for help when feeling lost in class
+- Learning how to join school activities or clubs
+
+---
 
 ## Tech Stack
 
@@ -49,26 +77,15 @@ These services are essential to the application and enable scalable, inclusive s
 - **AI Services:** Azure AI Language, Azure OpenAI
 - **Hosting:** Microsoft Azure
 
-## Demo Scenarios
-
-The MVP demonstrates the following scenarios:
-
-- Understanding school rules
-- Knowing who to ask for help at school
-- Joining school activities or clubs
-
-## Getting Started
-
-1. Clone the repository
-2. Install dependencies
-3. Configure Azure environment variables
-4. Run the development server
+---
 
 ## Imagine Cup 2026
 
-This project was developed as part of the Microsoft Imagine Cup 2026 competition and focuses on inclusive education through responsible use of AI.
+This project was developed as part of the Microsoft Imagine Cup 2026 competition.  
+It focuses on inclusive education and responsible use of AI to support students and schools.
+
+---
 
 ## License
 
 This project is provided for educational and demonstration purposes.
-
