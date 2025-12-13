@@ -38,9 +38,24 @@ export default function Home() {
   const [language, setLanguage] = useState<Language>("en");
   const [mode, setMode] = useState<Mode>("rules");
 
+  const [showInfo, setShowInfo] = useState(false);
+  const [activeTab, setActiveTab] = useState<"rules" | "rights" | "help">(
+    "rules"
+  );
+  const [officialData, setOfficialData] = useState<any>(null);
+
   const MAX_CHARS = 800;
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!showInfo) return;
+
+    fetch(`/data/official/rules.${language}.json`)
+      .then((res) => res.json())
+      .then(setOfficialData)
+      .catch(() => setOfficialData(null));
+  }, [showInfo, language]);
 
   /* 🔹 Reset conversation when language or mode changes */
   useEffect(() => {
@@ -203,6 +218,42 @@ export default function Home() {
           >
             Reset
           </button>
+
+          <button className="info-btn" onClick={() => setShowInfo(true)}>
+            Official Info
+          </button>
+
+          {showInfo && officialData && (
+            <aside className="info-panel">
+              <header>
+                <h2>Official School Information</h2>
+                <span className="verified">Verified · Non-AI</span>
+                <button onClick={() => setShowInfo(false)}>✕</button>
+              </header>
+
+              <nav className="tabs">
+                {(["rules", "rights", "help"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    className={activeTab === tab ? "active" : ""}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {officialData[tab].title}
+                  </button>
+                ))}
+              </nav>
+
+              <ul>
+                {officialData[activeTab].items.map(
+                  (item: string, i: number) => (
+                    <li key={i}>{item}</li>
+                  )
+                )}
+              </ul>
+
+              <footer>{officialData.footer}</footer>
+            </aside>
+          )}
         </div>
       </header>
 

@@ -82,7 +82,6 @@ a {
   line-height: 1.4;
 }
 
-
 .bubble.typing {
   opacity: 0.7;
   font-style: italic;
@@ -136,7 +135,6 @@ button:disabled {
   align-items: center;
 }
 
-
 .language-select,
 .mode-select {
   background: #0f172a;
@@ -162,7 +160,6 @@ button:disabled {
   cursor: pointer;
 }
 
-
 .reset-btn:hover {
   background: #1e293b;
 }
@@ -172,4 +169,23 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.info-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 360px;
+  height: 100%;
+  background: #111;
+  border-left: 1px solid #333;
+  padding: 16px;
+  overflow-y: auto;
+}
 
+.verified {
+  color: #4caf50;
+  font-size: 12px;
+}
+
+.tabs button.active {
+  border-bottom: 2px solid #4c8cff;
+}
