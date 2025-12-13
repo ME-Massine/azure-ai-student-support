@@ -5,14 +5,94 @@ const AZURE_API_KEY = process.env.AZURE_OPENAI_API_KEY!;
 const DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT!;
 const API_VERSION = process.env.AZURE_OPENAI_API_VERSION!;
 
-// Guardrail constants
-const MAX_MESSAGE_LENGTH = 800; // characters
+const MAX_MESSAGE_LENGTH = 800;
 const GENERIC_ERROR_MESSAGE =
   "Sorry, something went wrong while contacting the AI. Please try again.";
 
+type Message = { role: "user" | "assistant"; content: string };
+type Language = "en" | "fr" | "ar" | "es";
+type Mode = "rules" | "rights" | "guidance";
+
+/* 🔹 Smart system prompt */
+function buildSystemPrompt(language: Language, mode: Mode) {
+  const base =
+    language === "fr"
+      ? "Tu es un assistant calme, bienveillant et impartial qui aide les élèves."
+      : language === "ar"
+      ? "أنت مساعد ذكي وهادئ يساعد الطلاب بطريقة عادلة وداعمة."
+      : language === "es"
+      ? "Eres un asistente tranquilo, justo y solidario que ayuda a estudiantes."
+      : "You are a calm, supportive, and fair assistant helping students.";
+
+  if (mode === "rights") {
+    return `${base}
+Explique clairement les droits des élèves, avec un langage simple.
+Ne donne pas de conseils juridiques.
+Encourage le dialogue respectueux avec l'administration scolaire.`;
+  }
+
+  if (mode === "guidance") {
+    return `${base}
+Guide l'élève étape par étape sur ce qu'il devrait faire ensuite.
+Pose des questions si une information manque.
+Sois pratique et rassurant.`;
+  }
+
+  // Default: rules
+  return `${base}
+Explique les règles scolaires de manière simple.
+Explique pourquoi ces règles existent.
+Décris les conséquences possibles sans jugement.`;
+}
+
+function safeJson(body: unknown) {
+  return typeof body === "object" && body !== null ? (body as any) : {};
+}
+
+/**
+ * Azure streams SSE events like:
+ * data: {"choices":[{"delta":{"content":"Hi"}}]}
+ * data: [DONE]
+ */
+async function* sseToTextChunks(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+
+    for (const part of parts) {
+      const lines = part.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue;
+
+        const dataStr = trimmed.slice("data:".length).trim();
+        if (dataStr === "[DONE]") return;
+
+        try {
+          const json = JSON.parse(dataStr);
+          const token = json?.choices?.[0]?.delta?.content;
+          if (typeof token === "string" && token.length > 0) {
+            yield token;
+          }
+        } catch {
+          // Ignore malformed SSE line
+        }
+      }
+    }
+  }
+}
+
 export async function POST(req: Request) {
   try {
-    // 1️⃣ Parse body safely
     let body: any;
     try {
       body = await req.json();
@@ -23,18 +103,30 @@ export async function POST(req: Request) {
       );
     }
 
-    const message = body?.message;
+    body = safeJson(body);
 
-    // 2️⃣ Validate message existence
-    if (!message || typeof message !== "string") {
+    const language = (body.language ?? "en") as Language;
+    const mode = (body.mode ?? "rules") as Mode;
+    const messages = Array.isArray(body.messages)
+      ? (body.messages as Message[])
+      : null;
+
+    if (!messages || messages.length === 0) {
+      return NextResponse.json(
+        { error: "Conversation is empty." },
+        { status: 400 }
+      );
+    }
+
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "user" || typeof last.content !== "string") {
       return NextResponse.json(
         { error: "Please enter a valid question." },
         { status: 400 }
       );
     }
 
-    // 3️⃣ Trim + length guard
-    const trimmed = message.trim();
+    const trimmed = last.content.trim();
     if (trimmed.length === 0) {
       return NextResponse.json(
         { error: "Your message cannot be empty." },
@@ -45,14 +137,13 @@ export async function POST(req: Request) {
     if (trimmed.length > MAX_MESSAGE_LENGTH) {
       return NextResponse.json(
         {
-          error: `Your message is too long. Please keep it under ${MAX_MESSAGE_LENGTH} characters.`,
+          error: `Your message is too long. Keep it under ${MAX_MESSAGE_LENGTH} characters.`,
         },
         { status: 413 }
       );
     }
 
-    // 4️⃣ Build request (NO unsupported params like temperature)
-    const azureResponse = await fetch(
+    const azureRes = await fetch(
       `${AZURE_ENDPOINT}openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${API_VERSION}`,
       {
         method: "POST",
@@ -61,40 +152,50 @@ export async function POST(req: Request) {
           "api-key": AZURE_API_KEY,
         },
         body: JSON.stringify({
+          stream: true,
           messages: [
             {
               role: "system",
-              content:
-                "You are a calm, supportive AI that helps students understand school rules.",
+              content: buildSystemPrompt(language, mode),
             },
-            {
-              role: "user",
-              content: trimmed,
-            },
+            ...messages,
           ],
         }),
       }
     );
 
-    // 5️⃣ Handle Azure errors explicitly
-    if (!azureResponse.ok) {
-      const errorText = await azureResponse.text();
+    if (!azureRes.ok || !azureRes.body) {
+      const errorText = await azureRes.text().catch(() => "");
       console.error("Azure OpenAI error:", errorText);
-
       return NextResponse.json(
         { error: GENERIC_ERROR_MESSAGE },
         { status: 500 }
       );
     }
 
-    const data = await azureResponse.json();
+    const encoder = new TextEncoder();
 
-    // 6️⃣ Defensive response parsing
-    const reply =
-      data?.choices?.[0]?.message?.content ??
-      "I’m sorry, I couldn’t generate a response. Please try again.";
+    const outStream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const token of sseToTextChunks(azureRes.body!)) {
+            controller.enqueue(encoder.encode(token));
+          }
+          controller.close();
+        } catch (e) {
+          console.error("Streaming transform error:", e);
+          controller.error(e);
+        }
+      },
+    });
 
-    return NextResponse.json({ reply });
+    return new Response(outStream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      },
+    });
   } catch (err) {
     console.error("Server error:", err);
     return NextResponse.json({ error: GENERIC_ERROR_MESSAGE }, { status: 500 });
