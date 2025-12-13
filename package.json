@@ -4,11 +4,10 @@
   "private": true,
 
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start -H 0.0.0.0 -p $PORT",
-    "lint": "eslint"
-  },
+  "dev": "next dev",
+  "build": "next build",
+  "start": "npx next start -H 0.0.0.0 -p $PORT"
+},
 
   "engines": {
     "node": ">=20.0.0"
