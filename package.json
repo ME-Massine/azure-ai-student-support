@@ -2,12 +2,18 @@
   "name": "ai-student-support-navigator",
   "version": "0.1.0",
   "private": true,
+
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p $PORT",
     "lint": "eslint"
   },
+
+  "engines": {
+    "node": ">=20.0.0"
+  },
+
   "dependencies": {
     "dotenv": "^17.2.3",
     "next": "16.0.10",
@@ -15,6 +21,7 @@
     "react": "19.2.1",
     "react-dom": "19.2.1"
   },
+
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
