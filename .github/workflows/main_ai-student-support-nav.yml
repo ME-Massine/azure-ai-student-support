@@ -21,23 +21,22 @@ jobs:
         run: |
           npm install
           npm run build
-          # 1. Create the destination folder inside standalone
-          mkdir -p .next/standalone/.next/static
+          # 1. Create a clean deployment folder
+          mkdir deploy
           
-          # 2. Copy static and public files (crucial for CSS/Images)
-          cp -r .next/static/. .next/standalone/.next/static/
-          cp -r public/. .next/standalone/public/
+          # 2. Copy the standalone core files to the root of 'deploy'
+          cp -r .next/standalone/. ./deploy/
           
-          # 3. FIX: Copy the essential build manifest and server files 
-          # This ensures the 'production build' metadata is present
-          cp .next/required-server-files.json .next/standalone/.next/ || true
-          cp .next/build-manifest.json .next/standalone/.next/ || true
+          # 3. Copy static and public files into 'deploy/.next/static'
+          mkdir -p ./deploy/.next/static
+          cp -r .next/static/. ./deploy/.next/static/
+          cp -r public/. ./deploy/public/
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .next/standalone
+          path: deploy/ # We upload the 'deploy' folder, not the original standalone path
 
   deploy:
     runs-on: ubuntu-latest
