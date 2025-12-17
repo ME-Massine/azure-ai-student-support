@@ -22,27 +22,27 @@ jobs:
           npm install
           npm run build
           
-          # Create a staging area
+          # 1. Create a staging directory
           mkdir staging
           
-          # 1. Copy the core server files to the root of staging
+          # 2. Copy the standalone files (includes server.js and node_modules)
           cp -r .next/standalone/. ./staging/
           
-          # 2. Force the .next metadata folder into the staging root
-          # This is the part currently missing in your logs
+          # 3. CRITICAL: Manually create the .next folder and copy metadata/static files
+          # This is what Next.js requires to find the "production build"
           mkdir -p ./staging/.next
           cp -r .next/static ./staging/.next/static
           cp .next/required-server-files.json ./staging/.next/ || true
           cp .next/build-manifest.json ./staging/.next/ || true
           
-          # 3. Copy public assets
+          # 4. Copy public assets
           cp -r public ./staging/public
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: staging/
+          path: staging/  # We upload the complete staging folder
 
   deploy:
     runs-on: ubuntu-latest
