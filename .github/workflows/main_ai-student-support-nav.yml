@@ -21,8 +21,11 @@ jobs:
         run: |
           npm install
           npm run build
-          cp -r .next/static .next/standalone/.next/static
-          cp -r public .next/standalone/public
+          # The fix: Ensure the internal .next folder is created and populated correctly
+          # without this, the server finds 'server.js' but can't find the build manifest
+          mkdir -p .next/standalone/.next/static
+          cp -r .next/static/. .next/standalone/.next/static/
+          cp -r public/. .next/standalone/public/
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
