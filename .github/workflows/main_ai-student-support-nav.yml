@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,20 +26,17 @@ jobs:
           npm install
           npm run build
           
-          # 1. Create a clean staging area
           mkdir staging
           
-          # 2. Copy the standalone files (server.js and node_modules)
+          # Copy standalone files
           cp -r .next/standalone/. ./staging/
           
-          # 3. MANUALLY move .next folder pieces to the root of staging
-          # This is the "Production Build" the error is looking for
+          # MANUALLY move .next folder pieces
           mkdir -p ./staging/.next
           cp -r .next/static ./staging/.next/static
           cp .next/required-server-files.json ./staging/.next/ || true
           cp .next/build-manifest.json ./staging/.next/ || true
           
-          # 4. Copy public assets
           cp -r public ./staging/public
 
       - name: Upload artifact
@@ -52,10 +53,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-          path: ./release # Download to a specific folder
+          path: ./release
 
       - name: Zip artifact for deployment
-        run: zip -r release.zip . # Zip everything including hidden files
+        run: zip -r release.zip . 
         working-directory: ./release
 
       - name: Login to Azure
@@ -69,4 +70,4 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'ai-student-support-nav'
-          package: ./release/release.zip # Deploy the zip specifically
+          package: ./release/release.zip
