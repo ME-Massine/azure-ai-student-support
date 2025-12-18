@@ -1,6 +1,25 @@
 import { NextResponse } from "next/server";
 
-const AZURE_ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT!;
+function normalizeAzureEndpoint(raw: string | undefined) {
+  if (!raw) {
+    throw new Error("Missing AZURE_OPENAI_ENDPOINT environment variable.");
+  }
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch (err) {
+    throw new Error(`Invalid AZURE_OPENAI_ENDPOINT: ${String(err)}`);
+  }
+
+  if (url.protocol !== "https:") {
+    throw new Error("AZURE_OPENAI_ENDPOINT must use HTTPS (https://)");
+  }
+
+  const normalized = url.toString();
+  return normalized.endsWith("/") ? normalized : `${normalized}/`;
+}
+
 const AZURE_API_KEY = process.env.AZURE_OPENAI_API_KEY!;
 const DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT!;
 const API_VERSION = process.env.AZURE_OPENAI_API_VERSION!;
@@ -93,6 +112,17 @@ async function* sseToTextChunks(stream: ReadableStream<Uint8Array>) {
 
 export async function POST(req: Request) {
   try {
+    let azureEndpoint: string;
+    try {
+      azureEndpoint = normalizeAzureEndpoint(process.env.AZURE_OPENAI_ENDPOINT);
+    } catch (err) {
+      console.error("Azure endpoint misconfiguration:", err);
+      return NextResponse.json(
+        { error: "Server configuration error: Azure endpoint must use HTTPS." },
+        { status: 500 }
+      );
+    }
+
     let body: any;
     try {
       body = await req.json();
@@ -144,7 +174,7 @@ export async function POST(req: Request) {
     }
 
     const azureRes = await fetch(
-      `${AZURE_ENDPOINT}openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${API_VERSION}`,
+      `${azureEndpoint}openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${API_VERSION}`,
       {
         method: "POST",
         headers: {
