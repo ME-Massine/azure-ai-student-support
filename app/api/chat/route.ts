@@ -117,13 +117,6 @@ export async function POST(req: Request) {
   const API_VERSION = process.env.AZURE_OPENAI_API_VERSION;
   const ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT;
 
-  console.log("--- 🔍 DEBUGGING START ---");
-  console.log("Checking Environment Variables:");
-  console.log("- Deployment Name:", DEPLOYMENT || "MISSING ❌");
-  console.log("- API Version:", API_VERSION || "MISSING ❌");
-  console.log("- Endpoint:", ENDPOINT || "MISSING ❌");
-  console.log("- API Key Loaded:", AZURE_API_KEY ? "YES ✅" : "NO ❌");
-
   try {
     // 2. Validate Endpoint immediately
     let azureEndpoint: string;
@@ -161,7 +154,6 @@ export async function POST(req: Request) {
 
     // 4. Construct the URL and Log it (Hide the key for safety)
     const fullUrl = `${azureEndpoint}openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${API_VERSION}`;
-    console.log("🚀 SENDING REQUEST TO:", fullUrl);
 
     const azureRes = await fetch(fullUrl, {
         method: "POST",
@@ -199,7 +191,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Empty response from AI." }, { status: 500 });
     }
 
-    console.log("✅ AZURE CONNECTION SUCCESSFUL. STARTING STREAM...");
 
     const encoder = new TextEncoder();
     const outStream = new ReadableStream<Uint8Array>({
