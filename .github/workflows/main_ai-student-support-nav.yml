@@ -22,14 +22,14 @@ jobs:
           npm install
           npm run build
           
-          # 1. Create a staging directory
+          # 1. Create a clean staging area
           mkdir staging
           
-          # 2. Copy the standalone files (includes server.js and node_modules)
+          # 2. Copy the standalone files (server.js and node_modules)
           cp -r .next/standalone/. ./staging/
           
-          # 3. CRITICAL: Manually create the .next folder and copy metadata/static files
-          # This is what Next.js requires to find the "production build"
+          # 3. MANUALLY move .next folder pieces to the root of staging
+          # This is the "Production Build" the error is looking for
           mkdir -p ./staging/.next
           cp -r .next/static ./staging/.next/static
           cp .next/required-server-files.json ./staging/.next/ || true
@@ -38,11 +38,11 @@ jobs:
           # 4. Copy public assets
           cp -r public ./staging/public
 
-      - name: Upload artifact for deployment job
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: staging/  # We upload the complete staging folder
+          path: staging/
 
   deploy:
     runs-on: ubuntu-latest
