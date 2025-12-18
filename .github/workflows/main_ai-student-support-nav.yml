@@ -16,34 +16,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node.js version
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: npm install and build
+      - name: Install and Build
         run: |
           npm install
           npm run build
           
+          # Create staging
           mkdir staging
           
-          # Copy standalone files
+          # 1. Copy standalone server and modules
           cp -r .next/standalone/. ./staging/
           
-          # MANUALLY move .next folder pieces
+          # 2. Copy static and necessary build metadata (CRITICAL)
           mkdir -p ./staging/.next
           cp -r .next/static ./staging/.next/static
+          
+          # Next.js standalone needs these files specifically to recognize the build
           cp .next/required-server-files.json ./staging/.next/ || true
           cp .next/build-manifest.json ./staging/.next/ || true
           
+          # 3. Copy public assets
           cp -r public ./staging/public
+          
+          # 4. ZIP IT HERE to preserve the hidden .next folder
+          cd staging
+          zip -r ../deploy.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: staging/
+          path: deploy.zip
 
   deploy:
     runs-on: ubuntu-latest
@@ -53,11 +61,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-          path: ./release
-
-      - name: Zip artifact for deployment
-        run: zip -r release.zip . 
-        working-directory: ./release
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -70,4 +73,4 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'ai-student-support-nav'
-          package: ./release/release.zip
+          package: deploy.zip # Deploy the pre-made zip
