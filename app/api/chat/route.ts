@@ -111,71 +111,59 @@ async function* sseToTextChunks(stream: ReadableStream<Uint8Array>) {
 }
 
 export async function POST(req: Request) {
+  // 1. Move variable declaration INSIDE the function to ensure they refresh on server restart
+  const AZURE_API_KEY = process.env.AZURE_OPENAI_API_KEY;
+  const DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const API_VERSION = process.env.AZURE_OPENAI_API_VERSION;
+  const ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT;
+
+  console.log("--- 🔍 DEBUGGING START ---");
+  console.log("Checking Environment Variables:");
+  console.log("- Deployment Name:", DEPLOYMENT || "MISSING ❌");
+  console.log("- API Version:", API_VERSION || "MISSING ❌");
+  console.log("- Endpoint:", ENDPOINT || "MISSING ❌");
+  console.log("- API Key Loaded:", AZURE_API_KEY ? "YES ✅" : "NO ❌");
+
   try {
+    // 2. Validate Endpoint immediately
     let azureEndpoint: string;
     try {
-      azureEndpoint = normalizeAzureEndpoint(process.env.AZURE_OPENAI_ENDPOINT);
+      azureEndpoint = normalizeAzureEndpoint(ENDPOINT);
     } catch (err) {
-      console.error("Azure endpoint misconfiguration:", err);
+      console.error("❌ ENDPOINT ERROR:", err);
       return NextResponse.json(
-        { error: "Server configuration error: Azure endpoint must use HTTPS." },
+        { error: "Server endpoint misconfiguration." },
         { status: 500 }
       );
+    }
+
+    // 3. Check for missing critical values
+    if (!DEPLOYMENT || !AZURE_API_KEY) {
+       console.error("❌ CRITICAL MISSING VARS: Ensure DEPLOYMENT and API_KEY are set in Azure Portal.");
+       return NextResponse.json({ error: "Azure Deployment name not found." }, { status: 500 });
     }
 
     let body: any;
     try {
       body = await req.json();
     } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON body." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
     }
 
     body = safeJson(body);
-
     const language = (body.language ?? "en") as Language;
     const mode = (body.mode ?? "rules") as Mode;
-    const messages = Array.isArray(body.messages)
-      ? (body.messages as Message[])
-      : null;
+    const messages = Array.isArray(body.messages) ? (body.messages as Message[]) : null;
 
     if (!messages || messages.length === 0) {
-      return NextResponse.json(
-        { error: "Conversation is empty." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Conversation is empty." }, { status: 400 });
     }
 
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== "user" || typeof last.content !== "string") {
-      return NextResponse.json(
-        { error: "Please enter a valid question." },
-        { status: 400 }
-      );
-    }
+    // 4. Construct the URL and Log it (Hide the key for safety)
+    const fullUrl = `${azureEndpoint}openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${API_VERSION}`;
+    console.log("🚀 SENDING REQUEST TO:", fullUrl);
 
-    const trimmed = last.content.trim();
-    if (trimmed.length === 0) {
-      return NextResponse.json(
-        { error: "Your message cannot be empty." },
-        { status: 400 }
-      );
-    }
-
-    if (trimmed.length > MAX_MESSAGE_LENGTH) {
-      return NextResponse.json(
-        {
-          error: `Your message is too long. Keep it under ${MAX_MESSAGE_LENGTH} characters.`,
-        },
-        { status: 413 }
-      );
-    }
-
-    const azureRes = await fetch(
-      `${azureEndpoint}openai/deployments/${DEPLOYMENT}/chat/completions?api-version=${API_VERSION}`,
-      {
+    const azureRes = await fetch(fullUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -194,17 +182,26 @@ export async function POST(req: Request) {
       }
     );
 
-    if (!azureRes.ok || !azureRes.body) {
-      const errorText = await azureRes.text().catch(() => "");
-      console.error("Azure OpenAI error:", errorText);
+    // 5. Handle Azure Errors with deep logging
+    if (!azureRes.ok) {
+      const errorData = await azureRes.text();
+      console.error(`❌ AZURE REJECTED REQUEST (Status: ${azureRes.status})`);
+      console.error("Error Detail:", errorData);
+      
       return NextResponse.json(
-        { error: GENERIC_ERROR_MESSAGE },
-        { status: 500 }
+        { error: `Azure Error: ${azureRes.statusText}`, detail: errorData }, 
+        { status: azureRes.status }
       );
     }
 
-    const encoder = new TextEncoder();
+    if (!azureRes.body) {
+      console.error("❌ AZURE RESPONSE BODY IS EMPTY");
+      return NextResponse.json({ error: "Empty response from AI." }, { status: 500 });
+    }
 
+    console.log("✅ AZURE CONNECTION SUCCESSFUL. STARTING STREAM...");
+
+    const encoder = new TextEncoder();
     const outStream = new ReadableStream<Uint8Array>({
       async start(controller) {
         try {
@@ -227,7 +224,7 @@ export async function POST(req: Request) {
       },
     });
   } catch (err) {
-    console.error("Server error:", err);
+    console.error("💀 FATAL SERVER ERROR:", err);
     return NextResponse.json({ error: GENERIC_ERROR_MESSAGE }, { status: 500 });
   }
 }
