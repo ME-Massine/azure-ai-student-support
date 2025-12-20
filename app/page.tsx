@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
 type Message = {
@@ -207,6 +208,9 @@ export default function Home() {
             <button className="info-btn" onClick={() => setShowInfo(true)}>
               Official Info
             </button>
+            <Link className="info-btn" href="/general-chat">
+              Student Chat (ACS)
+            </Link>
           </div>
         </div>
       </header>
