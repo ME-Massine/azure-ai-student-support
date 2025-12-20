@@ -31,9 +31,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const thread = threadId
-    ? augmentThread(threadId)
-    : getOrCreateThread(schoolId, user.userId);
+  let thread: ReturnType<typeof augmentThread>;
+  try {
+    thread = threadId
+      ? augmentThread(threadId)
+      : getOrCreateThread(schoolId, user.userId);
+  } catch (error) {
+    console.error("Invalid thread reference", error);
+    return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+  }
 
   upsertUser(user);
 

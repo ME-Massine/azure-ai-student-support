@@ -5,7 +5,6 @@ import {
   addVerification,
   augmentThread,
   findMessage,
-  getOfficialRules,
 } from "@/lib/general-chat/store";
 
 export async function POST(req: Request) {
@@ -30,7 +29,7 @@ export async function POST(req: Request) {
   }
 
   const thread = augmentThread(message.threadId);
-  const rules = getOfficialRules(thread.schoolId, thread.users[0]?.language ?? "en");
+  const rules = thread.officialRules;
 
   const verification = await verifyMessageAgainstRules(message, rules);
 

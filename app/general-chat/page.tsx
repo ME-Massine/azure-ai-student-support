@@ -58,19 +58,24 @@ export default function GeneralChatPage() {
   const [status, setStatus] = useState<string | null>(null);
 
   async function bootstrapThread() {
-    const res = await fetch("/api/chat/thread", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ schoolId: demoUser.schoolId, user: demoUser }),
-    });
+    try {
+      const res = await fetch("/api/chat/thread", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ schoolId: demoUser.schoolId, user: demoUser }),
+      });
 
-    if (!res.ok) {
-      setStatus("Unable to start chat.");
-      return;
+      if (!res.ok) {
+        setStatus("Unable to start chat.");
+        return;
+      }
+
+      const data = await res.json();
+      setThread(data.thread);
+    } catch (error) {
+      console.error("Failed to bootstrap chat thread", error);
+      setStatus("Unable to start chat. Check your connection and retry.");
     }
-
-    const data = await res.json();
-    setThread(data.thread);
   }
 
   useEffect(() => {
@@ -88,13 +93,22 @@ export default function GeneralChatPage() {
   }
 
   async function moderateMessage(messageId: string) {
-    await fetch("/api/chat/moderate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId }),
-    }).then((res) => {
-      if (res.ok && thread) refreshThread(thread.threadId);
-    });
+    try {
+      const res = await fetch("/api/chat/moderate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId }),
+      });
+
+      if (res.ok && thread) {
+        refreshThread(thread.threadId);
+      } else {
+        setStatus("Moderation check failed");
+      }
+    } catch (error) {
+      console.error("Moderation request failed", error);
+      setStatus("Moderation unavailable. Please try again.");
+    }
   }
 
   async function handleSend() {
@@ -134,20 +148,25 @@ export default function GeneralChatPage() {
 
   async function verifyWithAI(message: ChatMessage) {
     setStatus("Requesting verification…");
-    const res = await fetch("/api/chat/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messageId: message.messageId }),
-    });
+    try {
+      const res = await fetch("/api/chat/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId: message.messageId }),
+      });
 
-    if (!res.ok) {
-      setStatus("Verification failed");
-      return;
+      if (!res.ok) {
+        setStatus("Verification failed");
+        return;
+      }
+
+      const data = await res.json();
+      setThread(data.thread);
+      setStatus("AI verification posted to the thread.");
+    } catch (error) {
+      console.error("Verification request failed", error);
+      setStatus("Verification failed. Please check your connection.");
     }
-
-    const data = await res.json();
-    setThread(data.thread);
-    setStatus("AI verification posted to the thread.");
   }
 
   const verificationsByMessage = useMemo(() => {
