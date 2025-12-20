@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import styles from "./page.module.css";
-import { AugmentedThread, ChatMessage, User } from "@/lib/general-chat/models";
+import {
+  AugmentedThread,
+  ChatMessage,
+  ModerationFlag,
+  User,
+} from "@/lib/general-chat/models";
 
 const demoUser: User = {
   userId: "student-001",
@@ -27,6 +32,12 @@ function verificationBadge(status: ChatMessage["verifiedStatus"]) {
   if (status === "partially_verified") return "Partially verified";
   if (status === "conflict") return "Conflict";
   return "Unverified";
+}
+
+function moderationBadge(severity: ModerationFlag["severity"]) {
+  if (severity === "high") return "High risk";
+  if (severity === "medium") return "Needs review";
+  return "Low risk";
 }
 
 function messageTone(message: ChatMessage) {
@@ -85,6 +96,40 @@ export default function GeneralChatPage() {
   }, []);
 
   const officialRules = useMemo(() => thread?.officialRules ?? [], [thread]);
+
+  const moderationFlags = useMemo(() => thread?.moderationFlags ?? [], [thread]);
+
+  const studentMessages = useMemo(
+    () => thread?.messages.filter((m) => m.messageType === "student_answer") ?? [],
+    [thread]
+  );
+
+  const verifiedMessages = useMemo(
+    () => studentMessages.filter((m) => m.verifiedStatus !== "unverified"),
+    [studentMessages]
+  );
+
+  const verificationCoverage = useMemo(() => {
+    if (studentMessages.length === 0) return 0;
+    return Math.round((verifiedMessages.length / studentMessages.length) * 100);
+  }, [studentMessages, verifiedMessages]);
+
+  const messageLookup = useMemo(() => {
+    const lookup: Record<string, ChatMessage> = {};
+    thread?.messages.forEach((m) => {
+      lookup[m.messageId] = m;
+    });
+    return lookup;
+  }, [thread]);
+
+  const moderationByMessage = useMemo(() => {
+    const lookup: Record<string, ModerationFlag[]> = {};
+    moderationFlags.forEach((flag) => {
+      lookup[flag.messageId] = lookup[flag.messageId] || [];
+      lookup[flag.messageId].push(flag);
+    });
+    return lookup;
+  }, [moderationFlags]);
 
   async function refreshThread(threadId: string) {
     const res = await fetch(`/api/chat/thread?threadId=${threadId}`);
@@ -197,6 +242,86 @@ export default function GeneralChatPage() {
         </div>
       </header>
 
+      <section className={styles.statusRow}>
+        <div className={styles.statusCard}>
+          <div className={styles.cardHeader}>
+            <span className={styles.cardTitle}>Verification coverage</span>
+            <span className={styles.pill}>{verificationCoverage}%</span>
+          </div>
+          <p className={styles.small}>AI reviews every student answer as a separate immutable post.</p>
+          <div className={styles.progressTrack}>
+            <div
+              className={styles.progressFill}
+              style={{ width: `${verificationCoverage}%` }}
+            />
+          </div>
+          <div className={styles.cardMeta}>
+            <span>{verifiedMessages.length} verified</span>
+            <span>
+              {studentMessages.length - verifiedMessages.length} awaiting verification
+            </span>
+          </div>
+        </div>
+        <div className={styles.statusCard}>
+          <div className={styles.cardHeader}>
+            <span className={styles.cardTitle}>Moderation</span>
+            <span className={`${styles.pill} ${styles.pillMuted}`}>
+              {moderationFlags.length} flag{moderationFlags.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className={styles.small}>
+            Content Safety scans run automatically; high-risk posts trigger system warnings.
+          </p>
+          <ul className={styles.flagList}>
+            {moderationFlags.slice(-3).reverse().map((flag) => {
+              const message = messageLookup[flag.messageId];
+              return (
+                <li key={flag.flagId} className={styles.flagItem}>
+                  <span className={`${styles.flagPill} ${styles[flag.severity]}`}>
+                    {moderationBadge(flag.severity)}
+                  </span>
+                  <div>
+                    <p className={styles.flagReason}>{flag.reason}</p>
+                    {message && (
+                      <p className={styles.flagMessage}>
+                        “{message.content.slice(0, 110)}{message.content.length > 110 ? "…" : ""}”
+                      </p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+            {moderationFlags.length === 0 && (
+              <li className={styles.flagItemMuted}>No moderation events yet.</li>
+            )}
+          </ul>
+        </div>
+        <div className={styles.statusCard}>
+          <div className={styles.cardHeader}>
+            <span className={styles.cardTitle}>Auditable trail</span>
+            <span className={`${styles.pill} ${styles.pillMuted}`}>
+              {thread?.verifications.length ?? 0} AI posts
+            </span>
+          </div>
+          <p className={styles.small}>
+            AI verification messages are stored separately so student edits never override safety and reference history.
+          </p>
+          <div className={styles.auditList}>
+            {(thread?.verifications.slice(-2) ?? []).map((verification) => (
+              <div key={verification.verificationId} className={styles.auditRow}>
+                <span className={`${styles.flagPill} ${styles.audit}`}>{verification.verificationResult}</span>
+                <span className={styles.auditText}>
+                  Sources: {verification.officialSourceIds.join(", ") || "n/a"}
+                </span>
+              </div>
+            ))}
+            {(thread?.verifications.length ?? 0) === 0 && (
+              <p className={styles.flagItemMuted}>Verification feed will appear here.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className={styles.grid}>
         <div className={styles.chatPanel}>
           <div className={styles.banner}>
@@ -222,6 +347,14 @@ export default function GeneralChatPage() {
                   <span className={styles.status}>
                     {verificationBadge(message.verifiedStatus)}
                   </span>
+                  {moderationByMessage[message.messageId]?.map((flag) => (
+                    <span
+                      key={flag.flagId}
+                      className={`${styles.status} ${styles[flag.severity]}`}
+                    >
+                      {moderationBadge(flag.severity)}
+                    </span>
+                  ))}
                 </div>
                 <p className={styles.content}>{message.content}</p>
                 <div className={styles.footer}>
@@ -229,6 +362,11 @@ export default function GeneralChatPage() {
                   {verificationsByMessage[message.messageId] && (
                     <span className={styles.reference}>
                       AI result: {verificationsByMessage[message.messageId]}
+                    </span>
+                  )}
+                  {moderationByMessage[message.messageId]?.[0] && (
+                    <span className={styles.reference}>
+                      Moderation: {moderationByMessage[message.messageId]?.[0]?.reason}
                     </span>
                   )}
                 </div>
