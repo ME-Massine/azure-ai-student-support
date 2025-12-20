@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { CommunicationIdentityClient } from "@azure/communication-identity";
 
-const identityClient = new CommunicationIdentityClient(
-  process.env.ACS_CONNECTION_STRING!
-);
-
 export async function POST() {
   try {
+    const connectionString = process.env.ACS_CONNECTION_STRING;
+
+    if (!connectionString) {
+      return NextResponse.json(
+        { error: "ACS connection string not configured" },
+        { status: 503 }
+      );
+    }
+
+    const identityClient = new CommunicationIdentityClient(connectionString);
+
     const user = await identityClient.createUser();
     const token = await identityClient.getToken(user, ["chat"]);
 
