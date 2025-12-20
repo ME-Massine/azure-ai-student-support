@@ -1,4 +1,5 @@
 export type UserRole = "student" | "senior" | "moderator";
+export type SenderRole = Exclude<UserRole, "moderator"> | "ai";
 
 export type MessageType =
   | "question"
@@ -33,7 +34,7 @@ export interface ChatMessage {
   messageId: string;
   threadId: string;
   senderId: string;
-  senderRole: Exclude<UserRole, "moderator">;
+  senderRole: SenderRole;
   content: string;
   createdAt: string;
   messageType: MessageType;

@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   const aiMessage = addMessage({
     threadId: message.threadId,
     senderId: "ai-verifier",
-    senderRole: "senior",
+    senderRole: "ai",
     content: aiContent,
     createdAt: record.createdAt,
     messageType: "ai_verification",
