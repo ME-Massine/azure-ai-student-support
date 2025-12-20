@@ -166,6 +166,7 @@ export function addVerification(
 
   const message = store.messages[verification.messageId];
   if (message) {
+    // Preserve original message text; verifiedStatus is derived metadata that can evolve.
     store.messages[verification.messageId] = { ...message, verifiedStatus };
   }
 

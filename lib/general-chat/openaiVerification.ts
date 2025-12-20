@@ -24,6 +24,35 @@ function composePrompt(message: ChatMessage, rules: OfficialRule[]) {
   return `You are a verifier ensuring student answers match official school rules.\n\nMessage to verify:\n${message.content}\n\nOfficial rules for the school:\n${ruleSummaries}\n\nDecide if the message matches the rules. Respond with:\n- verificationResult: one of confirmed | partially_correct | incorrect\n- explanation: short neutral justification referencing rule ids\n- officialSourceIds: array of rule ids used.`;
 }
 
+function parseVerificationResponse(content: string) {
+  let parsed: any;
+
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    throw new Error("Failed to parse Azure OpenAI verification response");
+  }
+
+  const isValidResult =
+    parsed?.verificationResult === "confirmed" ||
+    parsed?.verificationResult === "partially_correct" ||
+    parsed?.verificationResult === "incorrect";
+
+  if (!isValidResult || typeof parsed?.explanation !== "string") {
+    throw new Error("Azure OpenAI verification response missing required fields");
+  }
+
+  const officialSourceIds = Array.isArray(parsed.officialSourceIds)
+    ? parsed.officialSourceIds.filter((id: unknown): id is string => typeof id === "string")
+    : [];
+
+  return {
+    verificationResult: parsed.verificationResult as VerificationResult,
+    explanation: parsed.explanation as string,
+    officialSourceIds,
+  };
+}
+
 async function callAzureVerification(
   message: ChatMessage,
   rules: OfficialRule[]
@@ -71,18 +100,15 @@ async function callAzureVerification(
     throw new Error("Azure OpenAI response malformed");
   }
 
-  try {
-    const parsed = JSON.parse(content);
-    return {
-      messageId: message.messageId,
-      verificationResult: parsed.verificationResult as VerificationResult,
-      explanation: parsed.explanation,
-      officialSourceIds: parsed.officialSourceIds ?? [],
-      createdAt: new Date().toISOString(),
-    };
-  } catch (error) {
-    throw new Error("Failed to parse Azure OpenAI verification response");
-  }
+  const parsed = parseVerificationResponse(content);
+
+  return {
+    messageId: message.messageId,
+    verificationResult: parsed.verificationResult,
+    explanation: parsed.explanation,
+    officialSourceIds: parsed.officialSourceIds,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function fallbackVerification(

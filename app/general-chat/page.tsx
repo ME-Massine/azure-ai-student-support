@@ -18,6 +18,7 @@ function roleBadge(
 ) {
   if (messageType === "ai_verification") return "AI verifier";
   if (messageType === "system_warning") return "System";
+  if (role === "ai") return "AI";
   return role === "senior" ? "Senior" : "Student";
 }
 
@@ -31,6 +32,7 @@ function verificationBadge(status: ChatMessage["verifiedStatus"]) {
 function messageTone(message: ChatMessage) {
   if (message.messageType === "system_warning") return styles.warning;
   if (message.messageType === "ai_verification") return styles.ai;
+  if (message.senderRole === "ai") return styles.ai;
   return message.senderRole === "senior" ? styles.senior : styles.student;
 }
 
@@ -202,7 +204,7 @@ export default function GeneralChatPage() {
               <strong>Transport:</strong> Azure Communication Services (simulated)
             </div>
             <div>
-              <strong>Governance:</strong> Stored in Cosmos-style metadata store
+              <strong>Governance:</strong> Cosmos-style metadata store (in-memory prototype)
             </div>
           </div>
 

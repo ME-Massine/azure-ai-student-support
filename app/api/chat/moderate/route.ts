@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     systemMessage = addMessage({
       threadId: message.threadId,
       senderId: "system-moderation",
-      senderRole: "senior",
+      senderRole: "ai",
       content:
         "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.",
       createdAt: record.createdAt,
