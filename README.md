@@ -79,6 +79,30 @@ The MVP demonstrates the following realistic school scenarios:
 
 ---
 
+## General Student Chat (ACS + Cosmos metadata)
+
+The project now includes a general student chat channel that mirrors an Azure-first architecture:
+
+- **Transport:** Azure Communication Services (ACS) is the delivery layer for real-time chat.
+- **Governance & Storage:** Cosmos DB-style persistence tracks chat metadata, AI verifications, moderation flags, and official rule references.
+- **AI Policy Enforcement:** Azure OpenAI runs on-demand verification against school rules; AI replies are posted as new messages and never edit student content.
+
+### Data models
+
+- `User` links `userId` to the ACS identity and school context.
+- `ChatThread` holds the single school-wide thread for the MVP.
+- `ChatMessage` keeps immutable human messages plus AI/system events, with verification status.
+- `AIVerification`, `ModerationFlag`, and `OfficialRule` back governance and traceability.
+
+### API routes
+
+- `POST /api/chat/thread` – create or fetch the school-wide thread and return its metadata.
+- `POST /api/chat/send` – deliver a message through ACS and persist chat metadata.
+- `POST /api/chat/verify` – run Azure OpenAI verification, store the record, and post the AI verdict as its own message.
+- `POST /api/chat/moderate` – apply content safety checks, persist moderation flags, and optionally post a system warning.
+
+---
+
 ## Imagine Cup 2026
 
 This project was developed as part of the Microsoft Imagine Cup 2026 competition.  

@@ -395,6 +395,18 @@ button:disabled {
   gap: var(--gap-2);
 }
 
+.actions .info-btn,
+.actions .reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: inherit;
+}
+
 textarea {
   width: 100%;
   min-height: 92px;
