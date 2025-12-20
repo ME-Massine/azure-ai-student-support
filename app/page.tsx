@@ -25,10 +25,10 @@ const LANGUAGE_LABELS: Record<Language, string> = {
 };
 
 const WELCOME_MESSAGE: Record<Language, string> = {
-  en: "Hi! I’m here to help you understand school rules and answer your questions.",
+  en: "Hi! I’m here to help you understand school rules and school procedures.",
   fr: "Bonjour ! Je suis là pour t’aider à comprendre les règles scolaires.",
-  ar: "مرحباً! أنا هنا لمساعدتك في فهم قوانين المدرسة.",
-  es: "¡Hola! Estoy aquí para ayudarte a entender las reglas escolares.",
+  ar: "مرحباً! أنا هنا لمساعدتك في فهم القوانين والإجراءات المدرسية.",
+  es: "¡Hola! Estoy aquí para ayudarte a entender las normas escolares.",
 };
 
 export default function Home() {
@@ -48,6 +48,7 @@ export default function Home() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  /* Load official non-AI data */
   useEffect(() => {
     if (!showInfo) return;
 
@@ -57,7 +58,7 @@ export default function Home() {
       .catch(() => setOfficialData(null));
   }, [showInfo, language]);
 
-  /* 🔹 Reset conversation when language or mode changes */
+  /* Reset conversation on language or mode change */
   useEffect(() => {
     setMessages([
       {
@@ -67,7 +68,7 @@ export default function Home() {
     ]);
   }, [language, mode]);
 
-  /* 🔹 Auto-scroll */
+  /* Auto-scroll */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
@@ -80,8 +81,6 @@ export default function Home() {
 
     setInput("");
     setMessages(updatedMessages);
-
-    // Prepare assistant streaming bubble
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
     setLoading(true);
 
@@ -95,17 +94,11 @@ export default function Home() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: memory,
-          language,
-          mode,
-        }),
+        body: JSON.stringify({ messages: memory, language, mode }),
         signal: controller.signal,
       });
 
-      if (!res.ok || !res.body) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok || !res.body) throw new Error("Request failed");
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -118,34 +111,30 @@ export default function Home() {
 
         setMessages((prev) => {
           const copy = [...prev];
-          const lastIdx = copy.length - 1;
-          if (copy[lastIdx]?.role === "assistant") {
-            copy[lastIdx] = {
+          const last = copy.length - 1;
+          if (copy[last]?.role === "assistant") {
+            copy[last] = {
               role: "assistant",
-              content: copy[lastIdx].content + chunk,
+              content: copy[last].content + chunk,
             };
           }
           return copy;
         });
       }
     } catch {
-      const msg =
-        language === "fr"
-          ? "Une erreur est survenue."
-          : language === "ar"
-          ? "حدث خطأ."
-          : language === "es"
-          ? "Ocurrió un error."
-          : "Something went wrong.";
-
       setMessages((prev) => {
         const copy = [...prev];
-        const lastIdx = copy.length - 1;
-        if (copy[lastIdx]?.role === "assistant") {
-          copy[lastIdx] = { role: "assistant", content: msg };
-        } else {
-          copy.push({ role: "assistant", content: msg });
-        }
+        copy[copy.length - 1] = {
+          role: "assistant",
+          content:
+            language === "fr"
+              ? "Une erreur est survenue."
+              : language === "ar"
+              ? "حدث خطأ."
+              : language === "es"
+              ? "Ocurrió un error."
+              : "Something went wrong.",
+        };
         return copy;
       });
     } finally {
@@ -166,100 +155,71 @@ export default function Home() {
     abortRef.current = null;
     setLoading(false);
   }
+
   function resetConversation() {
-    // Stop any ongoing stream
     abortRef.current?.abort();
     abortRef.current = null;
     setLoading(false);
-
-    // Reset messages to welcome state
-    setMessages([
-      {
-        role: "assistant",
-        content: WELCOME_MESSAGE[language],
-      },
-    ]);
+    setMessages([{ role: "assistant", content: WELCOME_MESSAGE[language] }]);
   }
 
   return (
     <main className="container">
+      {/* HEADER */}
       <header className="header">
         <h1 className="title">AI Student Support Navigator</h1>
 
         <div className="header-controls">
-          <select
-            value={language}
-            onChange={(e) => setLanguage(e.target.value as Language)}
-            className="language-select"
-          >
-            {Object.entries(LANGUAGE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <div className="selectors">
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+              className="language-select"
+            >
+              {Object.entries(LANGUAGE_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value as Mode)}
-            className="mode-select"
-          >
-            {Object.entries(MODE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as Mode)}
+              className="mode-select"
+            >
+              {Object.entries(MODE_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </div>
 
-          <button
-            onClick={resetConversation}
-            className="reset-btn"
-            disabled={loading}
-          >
-            Reset
-          </button>
-
-          <button className="info-btn" onClick={() => setShowInfo(true)}>
-            Official Info
-          </button>
-
-          {showInfo && officialData && (
-            <aside className="info-panel">
-              <header>
-                <h2>Official School Information</h2>
-                <span className="verified">Verified · Non-AI</span>
-                <button onClick={() => setShowInfo(false)}>✕</button>
-              </header>
-
-              <nav className="tabs">
-                {(["rules", "rights", "help"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    className={activeTab === tab ? "active" : ""}
-                    onClick={() => setActiveTab(tab)}
-                  >
-                    {officialData[tab].title}
-                  </button>
-                ))}
-              </nav>
-
-              <ul>
-                {officialData[activeTab].items.map(
-                  (item: string, i: number) => (
-                    <li key={i}>{item}</li>
-                  )
-                )}
-              </ul>
-
-              <footer>{officialData.footer}</footer>
-            </aside>
-          )}
+          <div className="actions">
+            <button
+              onClick={resetConversation}
+              className="reset-btn"
+              disabled={loading}
+            >
+              Reset
+            </button>
+            <button className="info-btn" onClick={() => setShowInfo(true)}>
+              Official Info
+            </button>
+          </div>
         </div>
       </header>
 
-      {/* 🔹 Mode indicator */}
-      <div className="mode-indicator">Mode: {MODE_LABELS[mode]}</div>
+      {/* CONTEXT BAR */}
+      <div className="context-bar">
+        <span className="context-mode">{MODE_LABELS[mode]}</span>
+        <span className="context-scope">
+          Institutional · School-only · Support-oriented
+        </span>
+      </div>
 
+      {/* CHAT */}
       <div className="chat-window">
         <div className="chat-content">
           {messages.map((msg, i) => (
@@ -272,12 +232,17 @@ export default function Home() {
             </div>
           ))}
 
-          {loading && <div className="bubble ai typing">AI is typing…</div>}
+          {loading && (
+            <div className="bubble ai typing">
+              Generating institutional response…
+            </div>
+          )}
 
           <div ref={bottomRef} />
         </div>
       </div>
 
+      {/* INPUT */}
       <div className="input-area">
         <textarea
           value={input}
@@ -286,30 +251,69 @@ export default function Home() {
           maxLength={MAX_CHARS}
           placeholder={
             language === "fr"
-              ? "Posez une question sur l'école..."
+              ? "Posez une question scolaire…"
               : language === "ar"
-              ? "اطرح سؤالاً حول المدرسة..."
+              ? "اطرح سؤالاً مدرسياً…"
               : language === "es"
-              ? "Haz una pregunta sobre la escuela..."
-              : "Ask a question about school..."
+              ? "Haz una pregunta escolar…"
+              : "Ask a school-related question…"
           }
           dir={language === "ar" ? "rtl" : "ltr"}
         />
 
-        <button onClick={sendMessage} disabled={loading || !input.trim()}>
-          {loading ? "…" : "Send"}
-        </button>
-
-        {loading && (
-          <button onClick={stopStreaming} className="stop-btn">
-            Stop
+        <div className="input-actions">
+          <button onClick={sendMessage} disabled={loading || !input.trim()}>
+            Send
           </button>
-        )}
+
+          {loading && (
+            <button onClick={stopStreaming} className="stop-btn">
+              Stop
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="char-count">
         {input.length}/{MAX_CHARS}
       </div>
+
+      {/* OFFICIAL INFO PANEL */}
+      {showInfo && officialData && (
+        <aside className="info-panel">
+          <header>
+            <div>
+              <h2>Official School Information</h2>
+              <span className="verified">
+                Verified source · Not generated by AI
+              </span>
+            </div>
+            <button onClick={() => setShowInfo(false)}>✕</button>
+          </header>
+
+          <nav className="tabs">
+            {(["rules", "rights", "help"] as const).map((tab) => (
+              <button
+                key={tab}
+                className={activeTab === tab ? "active" : ""}
+                onClick={() => setActiveTab(tab)}
+              >
+                {officialData[tab].title}
+              </button>
+            ))}
+          </nav>
+
+          <ul>
+            {officialData[activeTab].items.map(
+              (item: string, i: number) => (
+                <li key={i}>{item}</li>
+              )
+            )}
+          </ul>
+
+          <footer>{officialData.footer}</footer>
+        </aside>
+      )}
     </main>
   );
 }
