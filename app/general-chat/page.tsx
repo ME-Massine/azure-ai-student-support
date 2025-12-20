@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import styles from "./page.module.css";
 import {
@@ -97,10 +98,14 @@ export default function GeneralChatPage() {
 
   const officialRules = useMemo(() => thread?.officialRules ?? [], [thread]);
 
-  const moderationFlags = useMemo(() => thread?.moderationFlags ?? [], [thread]);
+  const moderationFlags = useMemo(
+    () => thread?.moderationFlags ?? [],
+    [thread]
+  );
 
   const studentMessages = useMemo(
-    () => thread?.messages.filter((m) => m.messageType === "student_answer") ?? [],
+    () =>
+      thread?.messages.filter((m) => m.messageType === "student_answer") ?? [],
     [thread]
   );
 
@@ -226,6 +231,14 @@ export default function GeneralChatPage() {
 
   return (
     <main className={styles.shell}>
+      <nav className="global-nav">
+        <Link className="nav-tab" href="/">
+          AI Student Support
+        </Link>
+        <Link className="nav-tab active" href="/general-chat">
+          Student Chat (ACS)
+        </Link>
+      </nav>
       <header className={styles.header}>
         <div>
           <p className={styles.kicker}>
@@ -233,7 +246,9 @@ export default function GeneralChatPage() {
           </p>
           <h1 className={styles.title}>General Student Chat</h1>
           <p className={styles.subtitle}>
-            Student-to-student messaging with AI verification and moderation metadata. Human messages stay immutable; AI posts as separate entries.
+            Student-to-student messaging with AI verification and moderation
+            metadata. Human messages stay immutable; AI posts as separate
+            entries.
           </p>
         </div>
         <div className={styles.meta}>
@@ -248,7 +263,9 @@ export default function GeneralChatPage() {
             <span className={styles.cardTitle}>Verification coverage</span>
             <span className={styles.pill}>{verificationCoverage}%</span>
           </div>
-          <p className={styles.small}>AI reviews every student answer as a separate immutable post.</p>
+          <p className={styles.small}>
+            AI reviews every student answer as a separate immutable post.
+          </p>
           <div className={styles.progressTrack}>
             <div
               className={styles.progressFill}
@@ -258,7 +275,8 @@ export default function GeneralChatPage() {
           <div className={styles.cardMeta}>
             <span>{verifiedMessages.length} verified</span>
             <span>
-              {studentMessages.length - verifiedMessages.length} awaiting verification
+              {studentMessages.length - verifiedMessages.length} awaiting
+              verification
             </span>
           </div>
         </div>
@@ -266,33 +284,43 @@ export default function GeneralChatPage() {
           <div className={styles.cardHeader}>
             <span className={styles.cardTitle}>Moderation</span>
             <span className={`${styles.pill} ${styles.pillMuted}`}>
-              {moderationFlags.length} flag{moderationFlags.length === 1 ? "" : "s"}
+              {moderationFlags.length} flag
+              {moderationFlags.length === 1 ? "" : "s"}
             </span>
           </div>
           <p className={styles.small}>
-            Content Safety scans run automatically; high-risk posts trigger system warnings.
+            Content Safety scans run automatically; high-risk posts trigger
+            system warnings.
           </p>
           <ul className={styles.flagList}>
-            {moderationFlags.slice(-3).reverse().map((flag) => {
-              const message = messageLookup[flag.messageId];
-              return (
-                <li key={flag.flagId} className={styles.flagItem}>
-                  <span className={`${styles.flagPill} ${styles[flag.severity]}`}>
-                    {moderationBadge(flag.severity)}
-                  </span>
-                  <div>
-                    <p className={styles.flagReason}>{flag.reason}</p>
-                    {message && (
-                      <p className={styles.flagMessage}>
-                        “{message.content.slice(0, 110)}{message.content.length > 110 ? "…" : ""}”
-                      </p>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
+            {moderationFlags
+              .slice(-3)
+              .reverse()
+              .map((flag) => {
+                const message = messageLookup[flag.messageId];
+                return (
+                  <li key={flag.flagId} className={styles.flagItem}>
+                    <span
+                      className={`${styles.flagPill} ${styles[flag.severity]}`}
+                    >
+                      {moderationBadge(flag.severity)}
+                    </span>
+                    <div>
+                      <p className={styles.flagReason}>{flag.reason}</p>
+                      {message && (
+                        <p className={styles.flagMessage}>
+                          “{message.content.slice(0, 110)}
+                          {message.content.length > 110 ? "…" : ""}”
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             {moderationFlags.length === 0 && (
-              <li className={styles.flagItemMuted}>No moderation events yet.</li>
+              <li className={styles.flagItemMuted}>
+                No moderation events yet.
+              </li>
             )}
           </ul>
         </div>
@@ -304,19 +332,27 @@ export default function GeneralChatPage() {
             </span>
           </div>
           <p className={styles.small}>
-            AI verification messages are stored separately so student edits never override safety and reference history.
+            AI verification messages are stored separately so student edits
+            never override safety and reference history.
           </p>
           <div className={styles.auditList}>
             {(thread?.verifications.slice(-2) ?? []).map((verification) => (
-              <div key={verification.verificationId} className={styles.auditRow}>
-                <span className={`${styles.flagPill} ${styles.audit}`}>{verification.verificationResult}</span>
+              <div
+                key={verification.verificationId}
+                className={styles.auditRow}
+              >
+                <span className={`${styles.flagPill} ${styles.audit}`}>
+                  {verification.verificationResult}
+                </span>
                 <span className={styles.auditText}>
                   Sources: {verification.officialSourceIds.join(", ") || "n/a"}
                 </span>
               </div>
             ))}
             {(thread?.verifications.length ?? 0) === 0 && (
-              <p className={styles.flagItemMuted}>Verification feed will appear here.</p>
+              <p className={styles.flagItemMuted}>
+                Verification feed will appear here.
+              </p>
             )}
           </div>
         </div>
@@ -326,10 +362,12 @@ export default function GeneralChatPage() {
         <div className={styles.chatPanel}>
           <div className={styles.banner}>
             <div>
-              <strong>Transport:</strong> Azure Communication Services (simulated)
+              <strong>Transport:</strong> Azure Communication Services
+              (simulated)
             </div>
             <div>
-              <strong>Governance:</strong> Cosmos-style metadata store (in-memory prototype)
+              <strong>Governance:</strong> Cosmos-style metadata store
+              (in-memory prototype)
             </div>
           </div>
 
@@ -343,7 +381,9 @@ export default function GeneralChatPage() {
                   <span className={styles.badge}>
                     {roleBadge(message.senderRole, message.messageType)}
                   </span>
-                  <span className={styles.type}>{messageTypeLabel(message)}</span>
+                  <span className={styles.type}>
+                    {messageTypeLabel(message)}
+                  </span>
                   <span className={styles.status}>
                     {verificationBadge(message.verifiedStatus)}
                   </span>
@@ -366,7 +406,8 @@ export default function GeneralChatPage() {
                   )}
                   {moderationByMessage[message.messageId]?.[0] && (
                     <span className={styles.reference}>
-                      Moderation: {moderationByMessage[message.messageId]?.[0]?.reason}
+                      Moderation:{" "}
+                      {moderationByMessage[message.messageId]?.[0]?.reason}
                     </span>
                   )}
                 </div>
@@ -404,21 +445,26 @@ export default function GeneralChatPage() {
         <aside className={styles.sidebar}>
           <h3>Official school rules</h3>
           <p className={styles.small}>
-            AI references only these sources. Human answers never override official data.
+            AI references only these sources. Human answers never override
+            official data.
           </p>
           <ul className={styles.ruleList}>
             {officialRules.map((rule) => (
               <li key={rule.ruleId}>
                 <div className={styles.ruleTitle}>{rule.title}</div>
                 <p className={styles.ruleContent}>{rule.content}</p>
-                <span className={styles.ruleMeta}>Category: {rule.category}</span>
+                <span className={styles.ruleMeta}>
+                  Category: {rule.category}
+                </span>
               </li>
             ))}
           </ul>
           <div className={styles.footerCard}>
             <strong>Moderation</strong>
             <p>
-              Content Safety runs on every student message. Severe issues create system warnings; records remain auditable alongside AI verification history.
+              Content Safety runs on every student message. Severe issues create
+              system warnings; records remain auditable alongside AI
+              verification history.
             </p>
           </div>
         </aside>

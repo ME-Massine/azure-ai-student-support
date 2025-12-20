@@ -166,6 +166,14 @@ export default function Home() {
 
   return (
     <main className="container">
+      <nav className="global-nav">
+        <Link className="nav-tab active" href="/">
+          AI Student Support
+        </Link>
+        <Link className="nav-tab" href="/general-chat">
+          Student Chat (ACS)
+        </Link>
+      </nav>
       {/* HEADER */}
       <header className="header">
         <h1 className="title">AI Student Support Navigator</h1>
@@ -308,11 +316,9 @@ export default function Home() {
           </nav>
 
           <ul>
-            {officialData[activeTab].items.map(
-              (item: string, i: number) => (
-                <li key={i}>{item}</li>
-              )
-            )}
+            {officialData[activeTab].items.map((item: string, i: number) => (
+              <li key={i}>{item}</li>
+            ))}
           </ul>
 
           <footer>{officialData.footer}</footer>
