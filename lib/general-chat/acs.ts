@@ -30,6 +30,14 @@ function requireField(value: string | undefined, fieldName: string) {
   if (!value || !value.trim()) {
     throw new AcsRestError(`${fieldName} is required for ACS transport.`);
   }
+
+  if (value.length > 8000) {
+    throw new AcsRestError(
+      `${fieldName} exceeds ACS message size limits.`,
+      413,
+      "RequestEntityTooLarge"
+    );
+  }
 }
 
 function validateThreadId(threadId: string) {
@@ -53,11 +61,12 @@ export async function sendAcsMessage(options: SendOptions) {
 
   const deliveredAt = new Date().toISOString();
   const messageId = crypto.randomUUID();
+  const ACS_MODE = "simulated" as const;
 
   const envelope: SimulatedChatMessageEnvelope = {
     id: messageId,
     type: "text",
-    sequenceId: "0",
+    sequenceId: Date.now().toString(),
     version: "0",
     content: { message: options.content.trim() },
     senderCommunicationIdentifier: {
@@ -72,5 +81,6 @@ export async function sendAcsMessage(options: SendOptions) {
     senderAcsUserId: options.senderAcsUserId,
     content: options.content.trim(),
     envelope,
+    mode: ACS_MODE,
   };
 }
