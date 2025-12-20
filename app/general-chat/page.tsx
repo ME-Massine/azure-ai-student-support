@@ -41,35 +41,18 @@ function moderationBadge(severity: ModerationFlag["severity"]) {
   return "Low risk";
 }
 
-function messageTone(message: ChatMessage) {
-  if (message.messageType === "system_warning") return styles.warning;
-  if (message.messageType === "ai_verification") return styles.ai;
-  if (message.senderRole === "ai") return styles.ai;
-  return message.senderRole === "senior" ? styles.senior : styles.student;
-}
-
-function messageTypeLabel(message: ChatMessage) {
-  switch (message.messageType) {
-    case "question":
-      return "Question";
-    case "student_answer":
-      return "Student answer";
-    case "ai_verification":
-      return "AI verification";
-    case "official_reference":
-      return "Official reference";
-    case "system_warning":
-      return "System warning";
-    default:
-      return "Message";
-  }
-}
-
 export default function GeneralChatPage() {
   const [thread, setThread] = useState<AugmentedThread | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    "rules" | "verification" | "moderation"
+  >("rules");
+  const [expandedMessages, setExpandedMessages] = useState<
+    Record<string, boolean>
+  >({});
 
   async function bootstrapThread() {
     try {
@@ -96,11 +79,22 @@ export default function GeneralChatPage() {
     bootstrapThread();
   }, []);
 
+  useEffect(() => {
+    if (thread?.messages.length && !selectedMessageId) {
+      setSelectedMessageId(thread.messages[thread.messages.length - 1].messageId);
+    }
+  }, [selectedMessageId, thread]);
+
   const officialRules = useMemo(() => thread?.officialRules ?? [], [thread]);
 
   const moderationFlags = useMemo(
     () => thread?.moderationFlags ?? [],
     [thread]
+  );
+
+  const highRisk = useMemo(
+    () => moderationFlags.some((flag) => flag.severity === "high"),
+    [moderationFlags]
   );
 
   const studentMessages = useMemo(
@@ -118,14 +112,6 @@ export default function GeneralChatPage() {
     if (studentMessages.length === 0) return 0;
     return Math.round((verifiedMessages.length / studentMessages.length) * 100);
   }, [studentMessages, verifiedMessages]);
-
-  const messageLookup = useMemo(() => {
-    const lookup: Record<string, ChatMessage> = {};
-    thread?.messages.forEach((m) => {
-      lookup[m.messageId] = m;
-    });
-    return lookup;
-  }, [thread]);
 
   const moderationByMessage = useMemo(() => {
     const lookup: Record<string, ModerationFlag[]> = {};
@@ -229,6 +215,50 @@ export default function GeneralChatPage() {
     return lookup;
   }, [thread]);
 
+  const officialSourcesByMessage = useMemo(() => {
+    const lookup: Record<string, string[]> = {};
+    thread?.verifications.forEach((v) => {
+      lookup[v.messageId] = v.officialSourceIds;
+    });
+    return lookup;
+  }, [thread]);
+
+  function toggleDetails(messageId: string) {
+    setExpandedMessages((prev) => ({
+      ...prev,
+      [messageId]: !prev[messageId],
+    }));
+    setSelectedMessageId(messageId);
+  }
+
+  function statusChip(message: ChatMessage) {
+    const moderation = moderationByMessage[message.messageId]?.[0];
+    if (moderation) return moderationBadge(moderation.severity);
+    if (message.verifiedStatus !== "unverified")
+      return verificationBadge(message.verifiedStatus);
+    if (message.messageType === "student_answer") return "Pending";
+    return null;
+  }
+
+  function roleIcon(role: ChatMessage["senderRole"], type: ChatMessage["messageType"]) {
+    if (type === "ai_verification") return "✓";
+    if (type === "system_warning") return "!";
+    if (role === "senior") return "★";
+    if (role === "ai") return "🤖";
+    return "👤";
+  }
+
+  const selectedMessage = useMemo(() => {
+    if (!thread?.messages.length) return undefined;
+    if (selectedMessageId) {
+      return (
+        thread.messages.find((m) => m.messageId === selectedMessageId) ||
+        thread.messages[thread.messages.length - 1]
+      );
+    }
+    return thread.messages[thread.messages.length - 1];
+  }, [selectedMessageId, thread]);
+
   return (
     <main className={styles.shell}>
       <nav className="global-nav">
@@ -257,172 +287,168 @@ export default function GeneralChatPage() {
         </div>
       </header>
 
-      <section className={styles.statusRow}>
-        <div className={styles.statusCard}>
-          <div className={styles.cardHeader}>
-            <span className={styles.cardTitle}>Verification coverage</span>
-            <span className={styles.pill}>{verificationCoverage}%</span>
-          </div>
-          <p className={styles.small}>
-            AI reviews every student answer as a separate immutable post.
+      <section className={styles.summaryBar}>
+        <div className={styles.summaryItem}>
+          <div className={styles.summaryLabel}>Verified answers</div>
+          <div className={styles.summaryValue}>{verificationCoverage}%</div>
+          <p className={styles.summaryMeta}>
+            {verifiedMessages.length} verified ·
+            {" "}
+            {studentMessages.length - verifiedMessages.length} pending
           </p>
-          <div className={styles.progressTrack}>
-            <div
-              className={styles.progressFill}
-              style={{ width: `${verificationCoverage}%` }}
-            />
-          </div>
-          <div className={styles.cardMeta}>
-            <span>{verifiedMessages.length} verified</span>
-            <span>
-              {studentMessages.length - verifiedMessages.length} awaiting
-              verification
-            </span>
-          </div>
         </div>
-        <div className={styles.statusCard}>
-          <div className={styles.cardHeader}>
-            <span className={styles.cardTitle}>Moderation</span>
-            <span className={`${styles.pill} ${styles.pillMuted}`}>
-              {moderationFlags.length} flag
-              {moderationFlags.length === 1 ? "" : "s"}
-            </span>
+        <div className={styles.summaryItem}>
+          <div className={styles.summaryLabel}>Moderation status</div>
+          <div className={styles.summaryValue}>
+            {highRisk
+              ? "High risk"
+              : moderationFlags.length > 0
+              ? "Warnings present"
+              : "Clear"}
           </div>
-          <p className={styles.small}>
-            Content Safety scans run automatically; high-risk posts trigger
-            system warnings.
+          <p className={styles.summaryMeta}>
+            {moderationFlags.length} moderation flag
+            {moderationFlags.length === 1 ? "" : "s"}
           </p>
-          <ul className={styles.flagList}>
-            {moderationFlags
-              .slice(-3)
-              .reverse()
-              .map((flag) => {
-                const message = messageLookup[flag.messageId];
-                return (
-                  <li key={flag.flagId} className={styles.flagItem}>
-                    <span
-                      className={`${styles.flagPill} ${styles[flag.severity]}`}
-                    >
-                      {moderationBadge(flag.severity)}
-                    </span>
-                    <div>
-                      <p className={styles.flagReason}>{flag.reason}</p>
-                      {message && (
-                        <p className={styles.flagMessage}>
-                          “{message.content.slice(0, 110)}
-                          {message.content.length > 110 ? "…" : ""}”
-                        </p>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            {moderationFlags.length === 0 && (
-              <li className={styles.flagItemMuted}>
-                No moderation events yet.
-              </li>
-            )}
-          </ul>
         </div>
-        <div className={styles.statusCard}>
-          <div className={styles.cardHeader}>
-            <span className={styles.cardTitle}>Auditable trail</span>
-            <span className={`${styles.pill} ${styles.pillMuted}`}>
-              {thread?.verifications.length ?? 0} AI posts
-            </span>
+        <div className={styles.summaryItem}>
+          <div className={styles.summaryLabel}>Audit completeness</div>
+          <div className={styles.summaryValue}>
+            {(thread?.verifications.length ?? 0) + studentMessages.length > 0
+              ? Math.min(
+                  100,
+                  Math.round(
+                    ((thread?.verifications.length ?? 0) /
+                      (studentMessages.length || 1)) *
+                      100
+                  )
+                )
+              : 0}
+            %
           </div>
-          <p className={styles.small}>
-            AI verification messages are stored separately so student edits
-            never override safety and reference history.
+          <p className={styles.summaryMeta}>
+            {(thread?.verifications.length ?? 0)} AI verification record
+            {(thread?.verifications.length ?? 0) === 1 ? "" : "s"}
           </p>
-          <div className={styles.auditList}>
-            {(thread?.verifications.slice(-2) ?? []).map((verification) => (
-              <div
-                key={verification.verificationId}
-                className={styles.auditRow}
-              >
-                <span className={`${styles.flagPill} ${styles.audit}`}>
-                  {verification.verificationResult}
-                </span>
-                <span className={styles.auditText}>
-                  Sources: {verification.officialSourceIds.join(", ") || "n/a"}
-                </span>
-              </div>
-            ))}
-            {(thread?.verifications.length ?? 0) === 0 && (
-              <p className={styles.flagItemMuted}>
-                Verification feed will appear here.
-              </p>
-            )}
-          </div>
         </div>
       </section>
 
       <section className={styles.grid}>
         <div className={styles.chatPanel}>
-          <div className={styles.banner}>
-            <div>
-              <strong>Transport:</strong> Azure Communication Services
-              (simulated)
+          {highRisk && (
+            <div className={styles.threadBanner}>
+              High-risk content detected. Review flagged messages below before
+              sharing externally.
             </div>
-            <div>
-              <strong>Governance:</strong> Cosmos-style metadata store
-              (in-memory prototype)
-            </div>
-          </div>
+          )}
 
           <div className={styles.messages}>
-            {thread?.messages.map((message) => (
-              <div
-                key={message.messageId}
-                className={`${styles.message} ${messageTone(message)}`}
-              >
-                <div className={styles.messageHeader}>
-                  <span className={styles.badge}>
-                    {roleBadge(message.senderRole, message.messageType)}
-                  </span>
-                  <span className={styles.type}>
-                    {messageTypeLabel(message)}
-                  </span>
-                  <span className={styles.status}>
-                    {verificationBadge(message.verifiedStatus)}
-                  </span>
-                  {moderationByMessage[message.messageId]?.map((flag) => (
-                    <span
-                      key={flag.flagId}
-                      className={`${styles.status} ${styles[flag.severity]}`}
-                    >
-                      {moderationBadge(flag.severity)}
+            {thread?.messages.map((message) => {
+              const isExpanded = expandedMessages[message.messageId];
+              const moderation = moderationByMessage[message.messageId]?.[0];
+              const chip = statusChip(message);
+              const verification = verificationsByMessage[message.messageId];
+
+              return (
+                <article
+                  key={message.messageId}
+                  className={styles.message}
+                  onClick={() => toggleDetails(message.messageId)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      toggleDetails(message.messageId);
+                    }
+                  }}
+                >
+                  <div className={styles.messageHeader}>
+                    <span className={styles.roleIcon}>
+                      {roleIcon(message.senderRole, message.messageType)}
                     </span>
-                  ))}
-                </div>
-                <p className={styles.content}>{message.content}</p>
-                <div className={styles.footer}>
-                  <span>{new Date(message.createdAt).toLocaleString()}</span>
-                  {verificationsByMessage[message.messageId] && (
-                    <span className={styles.reference}>
-                      AI result: {verificationsByMessage[message.messageId]}
+                    <span className={styles.sender}>
+                      {roleBadge(message.senderRole, message.messageType)}
                     </span>
-                  )}
-                  {moderationByMessage[message.messageId]?.[0] && (
-                    <span className={styles.reference}>
-                      Moderation:{" "}
-                      {moderationByMessage[message.messageId]?.[0]?.reason}
-                    </span>
-                  )}
-                </div>
-                {message.messageType === "student_answer" && (
-                  <div className={styles.actions}>
+                    {chip && <span className={styles.status}>{chip}</span>}
+                    {moderation?.severity === "medium" && (
+                      <span className={`${styles.status} ${styles.inlineWarn}`}>
+                        Needs review
+                      </span>
+                    )}
+                    {moderation?.severity === "low" && (
+                      <span className={styles.iconOnly} title="Low risk">
+                        ●
+                      </span>
+                    )}
                     <button
-                      onClick={() => verifyWithAI(message)}
-                      className={styles.verifyBtn}
+                      className={styles.chevron}
+                      aria-label={isExpanded ? "Collapse details" : "Expand details"}
                     >
-                      Verify with AI
+                      {isExpanded ? "▾" : "▸"}
                     </button>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  <p className={styles.content}>{message.content}</p>
+
+                  {verification && (
+                    <div className={styles.verificationNote}>
+                      <span className={styles.noteLabel}>
+                        AI verification (non-binding)
+                      </span>
+                      <p className={styles.noteBody}>{verification}</p>
+                    </div>
+                  )}
+
+                  {isExpanded && (
+                    <div className={styles.detailsPanel}>
+                      <div className={styles.detailRow}>
+                        <div className={styles.detailLabel}>Verification</div>
+                        <div className={styles.detailBody}>
+                          {verification ? verification : "Not yet requested"}
+                        </div>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <div className={styles.detailLabel}>Moderation</div>
+                        <div className={styles.detailBody}>
+                          {moderation
+                            ? `${moderationBadge(moderation.severity)} · ${moderation.reason}`
+                            : "No issues detected"}
+                        </div>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <div className={styles.detailLabel}>Official sources</div>
+                        <div className={styles.detailBody}>
+                          {officialSourcesByMessage[message.messageId]?.length
+                            ? officialSourcesByMessage[message.messageId].join(
+                                ", "
+                              )
+                            : "None referenced"}
+                        </div>
+                      </div>
+                      <div className={styles.detailRow}>
+                        <div className={styles.detailLabel}>Timestamp</div>
+                        <div className={styles.detailBody}>
+                          {new Date(message.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      {message.messageType === "student_answer" && (
+                        <div className={styles.detailActions}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              verifyWithAI(message);
+                            }}
+                            className={styles.verifyBtn}
+                          >
+                            Verify with AI
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
 
           <div className={styles.inputRow}>
@@ -443,29 +469,99 @@ export default function GeneralChatPage() {
         </div>
 
         <aside className={styles.sidebar}>
-          <h3>Official school rules</h3>
-          <p className={styles.small}>
-            AI references only these sources. Human answers never override
-            official data.
-          </p>
-          <ul className={styles.ruleList}>
-            {officialRules.map((rule) => (
-              <li key={rule.ruleId}>
-                <div className={styles.ruleTitle}>{rule.title}</div>
-                <p className={styles.ruleContent}>{rule.content}</p>
-                <span className={styles.ruleMeta}>
-                  Category: {rule.category}
-                </span>
-              </li>
+          <div className={styles.tabList}>
+            {(["rules", "verification", "moderation"] as const).map((tab) => (
+              <button
+                key={tab}
+                className={`${styles.tab} ${
+                  activeTab === tab ? styles.activeTab : ""
+                } ${
+                  selectedMessageId === null && tab !== "rules"
+                    ? styles.tabDisabled
+                    : ""
+                }`}
+                disabled={selectedMessageId === null && tab !== "rules"}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab === "rules"
+                  ? "Official Rules"
+                  : tab === "verification"
+                  ? "Verification Summary"
+                  : "Moderation Log"}
+              </button>
             ))}
-          </ul>
-          <div className={styles.footerCard}>
-            <strong>Moderation</strong>
-            <p>
-              Content Safety runs on every student message. Severe issues create
-              system warnings; records remain auditable alongside AI
-              verification history.
-            </p>
+          </div>
+
+          <div className={styles.sidebarPanel}>
+            {activeTab === "rules" && (
+              <div className={styles.sidebarSection}>
+                <h3>Official Rules</h3>
+                <p className={styles.small}>
+                  AI references only these sources. Human answers remain
+                  immutable.
+                </p>
+                <ul className={styles.ruleList}>
+                  {officialRules.map((rule) => (
+                    <li key={rule.ruleId}>
+                      <div className={styles.ruleTitle}>{rule.title}</div>
+                      <p className={styles.ruleContent}>{rule.content}</p>
+                      <span className={styles.ruleMeta}>
+                        Category: {rule.category}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {activeTab === "verification" && (
+              <div className={styles.sidebarSection}>
+                <h3>Verification Summary</h3>
+                <p className={styles.small}>
+                  Selected message: {selectedMessage?.messageId ?? "none"}
+                </p>
+                <p className={styles.sidebarBody}>
+                  {selectedMessage?.messageId &&
+                  verificationsByMessage[selectedMessage.messageId]
+                    ? verificationsByMessage[selectedMessage.messageId]
+                    : "No AI verification yet."}
+                </p>
+                <p className={styles.sidebarMeta}>
+                  Sources: {selectedMessage?.messageId &&
+                  officialSourcesByMessage[selectedMessage.messageId]?.length
+                    ? officialSourcesByMessage[selectedMessage.messageId]?.join(
+                        ", "
+                      )
+                    : "n/a"}
+                </p>
+              </div>
+            )}
+
+            {activeTab === "moderation" && (
+              <div className={styles.sidebarSection}>
+                <h3>Moderation Log</h3>
+                <ul className={styles.flagListCompact}>
+                  {moderationFlags.map((flag) => (
+                    <li key={flag.flagId}>
+                      <span
+                        className={`${styles.flagPill} ${styles[flag.severity]}`}
+                      >
+                        {moderationBadge(flag.severity)}
+                      </span>
+                      <div>
+                        <div className={styles.flagReason}>{flag.reason}</div>
+                        <div className={styles.flagMeta}>
+                          Message: {flag.messageId}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                  {moderationFlags.length === 0 && (
+                    <li className={styles.flagItemMuted}>No moderation events.</li>
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
         </aside>
       </section>
