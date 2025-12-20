@@ -43,21 +43,37 @@ export async function POST(req: Request) {
 
   upsertUser(user);
 
-  const acsResult = await sendAcsMessage({
-    threadId: thread.threadId,
-    content,
-    senderAcsUserId: user.acsUserId,
-  });
+  let acsResult: Awaited<ReturnType<typeof sendAcsMessage>>;
+  try {
+    acsResult = await sendAcsMessage({
+      threadId: thread.threadId,
+      content,
+      senderAcsUserId: user.acsUserId,
+    });
+  } catch (error) {
+    console.error("ACS transport failed", error);
+
+    const status = (error as any)?.statusCode ?? 502;
+    const message =
+      error instanceof Error && error.message
+        ? error.message
+        : "Failed to send message through ACS.";
+
+    return NextResponse.json({ error: message }, { status });
+  }
 
   const created = addMessage({
     threadId: thread.threadId,
     senderId: user.userId,
     senderRole: user.role === "senior" ? "senior" : "student",
-    content,
+    content: acsResult.content,
     createdAt: acsResult.deliveredAt,
     messageType: messageType ?? "student_answer",
     verifiedStatus: "unverified",
   });
 
-  return NextResponse.json({ message: created, thread: augmentThread(thread.threadId) });
+  return NextResponse.json({
+    message: created,
+    thread: augmentThread(thread.threadId),
+  });
 }

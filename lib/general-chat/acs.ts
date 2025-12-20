@@ -4,14 +4,73 @@ interface SendOptions {
   senderAcsUserId: string;
 }
 
+interface SimulatedChatMessageEnvelope {
+  id: string;
+  type: "text";
+  sequenceId: string;
+  version: string;
+  content: { message: string };
+  senderCommunicationIdentifier: { communicationUserId: string };
+  createdOn: string;
+}
+
+class AcsRestError extends Error {
+  public statusCode: number;
+  public code: string;
+
+  constructor(message: string, statusCode = 400, code = "BadRequest") {
+    super(message);
+    this.name = "RestError";
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+function requireField(value: string | undefined, fieldName: string) {
+  if (!value || !value.trim()) {
+    throw new AcsRestError(`${fieldName} is required for ACS transport.`);
+  }
+}
+
+function validateThreadId(threadId: string) {
+  const uuidPattern =
+    /^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$/;
+
+  if (!uuidPattern.test(threadId)) {
+    throw new AcsRestError(
+      "Invalid ACS threadId format.",
+      400,
+      "InvalidArgument"
+    );
+  }
+}
+
 export async function sendAcsMessage(options: SendOptions) {
-  // Placeholder for ACS transport. In production this would use @azure/communication-chat.
-  // We still return a deterministic id so metadata can link to the transport envelope.
+  requireField(options.threadId, "threadId");
+  requireField(options.content, "content");
+  requireField(options.senderAcsUserId, "senderAcsUserId");
+  validateThreadId(options.threadId);
+
+  const deliveredAt = new Date().toISOString();
+  const messageId = crypto.randomUUID();
+
+  const envelope: SimulatedChatMessageEnvelope = {
+    id: messageId,
+    type: "text",
+    sequenceId: "0",
+    version: "0",
+    content: { message: options.content.trim() },
+    senderCommunicationIdentifier: {
+      communicationUserId: options.senderAcsUserId,
+    },
+    createdOn: deliveredAt,
+  };
   return {
-    acsMessageId: crypto.randomUUID(),
-    deliveredAt: new Date().toISOString(),
+    acsMessageId: messageId,
+    deliveredAt,
     threadId: options.threadId,
     senderAcsUserId: options.senderAcsUserId,
-    content: options.content,
+    content: options.content.trim(),
+    envelope,
   };
 }
