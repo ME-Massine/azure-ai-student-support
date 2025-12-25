@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "title": "Règles de l’école",
+    "items": [
+      "La présence est obligatoire à tous les cours programmés sauf si vous avez une excuse écrite du bureau scolaire.",
+      "Les dates limites officielles pour ajouter, abandonner ou retirer un cours suivent le calendrier académique publié par le bureau du registraire.",
+      "L’utilisation d’outils d’IA pour les devoirs doit respecter les règles du cours; citez toujours les outils et sources autorisés.",
+      "Les cartes d’identité doivent être portées sur le campus et présentées au personnel sur demande."
+    ]
+  },
+  "rights": {
+    "title": "Droits des étudiants",
+    "items": [
+      "Vous pouvez demander une copie officielle du code de conduite au Service aux étudiants à tout moment.",
+      "Vous avez le droit de faire appel d’une décision disciplinaire dans les 10 jours ouvrables suivant la notification.",
+      "Les demandes d’aménagement académique sont examinées de manière confidentielle par le bureau d’accessibilité.",
+      "Toutes les notes peuvent être revues par le bureau du registraire si vous soumettez une demande officielle de réexamen."
+    ]
+  },
+  "help": {
+    "title": "Que dois-je faire ?",
+    "items": [
+      "Si vous manquez un cours ou une évaluation, avertissez votre enseignant et soumettez le formulaire d’absence dans les deux jours.",
+      "Pour tout problème de sécurité sur le campus, appelez la sécurité du campus et transmettez le numéro d’incident au Service aux étudiants.",
+      "Mettez à jour votre adresse, votre numéro de téléphone et vos contacts d’urgence sur le portail étudiant chaque semestre.",
+      "Prenez rendez-vous avec un conseiller via le portail de conseil ou en vous rendant au bureau de conseil."
+    ]
+  },
+  "footer": "Informations officielles publiées par le Service aux étudiants · Année académique 2024-2025"
+}

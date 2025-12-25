@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "title": "School Rules",
+    "items": [
+      "Attendance is required for all scheduled classes unless you have a written excuse from the school office.",
+      "Official deadlines for course adds, drops, and withdrawals follow the academic calendar posted by the registrar.",
+      "Use of AI tools for assignments must follow course policies; always cite approved tools and sources.",
+      "ID badges must be worn on campus and presented to staff when requested."
+    ]
+  },
+  "rights": {
+    "title": "Student Rights",
+    "items": [
+      "You can request an official copy of the code of conduct from Student Affairs at any time.",
+      "You have the right to appeal disciplinary decisions within 10 business days of notification.",
+      "Academic accommodation requests are reviewed confidentially by the accessibility office.",
+      "All grades can be reviewed through the registrar if you submit a formal reconsideration request."
+    ]
+  },
+  "help": {
+    "title": "What Should I Do?",
+    "items": [
+      "If you miss a class or assessment, notify your instructor and submit the absence form within two days.",
+      "For safety issues on campus, call campus security and report the incident number to Student Affairs.",
+      "Update your address, phone number, and emergency contacts through the student portal each term.",
+      "Schedule advising by booking through the advising portal or visiting the advising desk in person."
+    ]
+  },
+  "footer": "Official information issued by Student Affairs · Academic Year 2024-2025"
+}
