@@ -195,28 +195,14 @@
 .messages {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: 600px;
-  overflow-y: auto;
+  gap: 10px;
+  min-height: 320px;
+  max-height: 520px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
-  padding: 16px;
-  scroll-behavior: smooth;
-  align-items: flex-start;
-}
-
-.messages::-webkit-scrollbar {
-  width: 8px;
-}
-
-.messages::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.messages::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  padding: 12px;
+  overflow-y: auto;
 }
 
 .messages::-webkit-scrollbar-thumb:hover {
@@ -234,22 +220,9 @@
   gap: 10px;
   max-width: 86%;
   cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.message::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(125, 211, 252, 0.05), transparent);
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.message:hover::before {
-  opacity: 1;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  align-self: flex-start;
+  max-width: 82%;
 }
 
 .message:hover {
@@ -421,6 +394,16 @@
 .chevron:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--accent);
+}
+
+.myMessage {
+  margin-left: auto;
+  background: rgba(125, 211, 252, 0.06);
+  border-color: rgba(125, 211, 252, 0.3);
+}
+
+.otherMessage {
+  margin-right: auto;
 }
 
 .content {
