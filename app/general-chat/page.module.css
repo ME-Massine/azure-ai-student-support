@@ -149,6 +149,19 @@
   gap: 16px;
 }
 
+.chatWindow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 720px;
+  min-height: 640px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
 /* Banner Refinements */
 .threadBanner {
   background: linear-gradient(135deg, rgba(248, 113, 113, 0.12), rgba(239, 68, 68, 0.08));
@@ -196,14 +209,15 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  min-height: 400px;
-  max-height: 600px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  background: var(--panel);
+  background: var(--panel-2);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 12px;
   scroll-behavior: smooth;
+  align-items: flex-start;
 }
 
 .messages::-webkit-scrollbar {
@@ -232,6 +246,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-width: 86%;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
@@ -269,6 +284,23 @@
 .messageHighRisk {
   border-color: rgba(248, 113, 113, 0.5);
   background: rgba(248, 113, 113, 0.05);
+}
+
+.messageSelf {
+  align-self: flex-end;
+  margin-left: auto;
+  background: linear-gradient(
+      135deg,
+      rgba(125, 211, 252, 0.12),
+      rgba(125, 211, 252, 0.02)
+    ),
+    rgba(255, 255, 255, 0.02);
+  border-color: rgba(125, 211, 252, 0.4);
+  box-shadow: 0 6px 18px rgba(125, 211, 252, 0.15);
+}
+
+.messageOther {
+  align-self: flex-start;
 }
 
 .messageHeader {
@@ -595,7 +627,7 @@
   gap: 0;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
@@ -1023,8 +1055,9 @@
     height: 1px;
   }
 
-  .messages {
-    max-height: 500px;
+  .chatWindow {
+    height: 620px;
+    min-height: 520px;
   }
 
   .tabList {

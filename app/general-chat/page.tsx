@@ -317,25 +317,28 @@ export default function GeneralChatPage() {
             </div>
           )}
 
-          <ChatTimeline
-            messages={thread?.messages ?? []}
-            expandedMessages={expandedMessages}
-            selectedMessageId={selectedMessageId}
-            onToggleDetails={(messageId) => toggleDetails(messageId)}
-            onSelectMessage={(messageId) => setSelectedMessageId(messageId)}
-            verificationsByMessage={verificationsByMessage}
-            moderationByMessage={moderationByMessage}
-            officialSourcesByMessage={officialSourcesByMessage}
-            onVerify={verifyWithAI}
-          />
+          <div className={styles.chatWindow}>
+            <ChatTimeline
+              messages={thread?.messages ?? []}
+              expandedMessages={expandedMessages}
+              selectedMessageId={selectedMessageId}
+              onToggleDetails={(messageId) => toggleDetails(messageId)}
+              onSelectMessage={(messageId) => setSelectedMessageId(messageId)}
+              verificationsByMessage={verificationsByMessage}
+              moderationByMessage={moderationByMessage}
+              officialSourcesByMessage={officialSourcesByMessage}
+              onVerify={verifyWithAI}
+              currentUserId={demoUser.userId}
+            />
 
-          <MessageComposer
-            value={input}
-            onChange={setInput}
-            onSend={handleSend}
-            loading={loading}
-            status={status}
-          />
+            <MessageComposer
+              value={input}
+              onChange={setInput}
+              onSend={handleSend}
+              loading={loading}
+              status={status}
+            />
+          </div>
         </div>
 
         <ContextSidebar
@@ -454,6 +457,7 @@ type ChatTimelineProps = {
   moderationByMessage: Record<string, ModerationFlag[]>;
   officialSourcesByMessage: Record<string, string[]>;
   onVerify: (message: ChatMessage) => void;
+  currentUserId: string;
 };
 
 function ChatTimeline({
@@ -466,6 +470,7 @@ function ChatTimeline({
   moderationByMessage,
   officialSourcesByMessage,
   onVerify,
+  currentUserId,
 }: ChatTimelineProps) {
   if (!messages.length) {
     return <EmptyChatState />;
@@ -479,11 +484,14 @@ function ChatTimeline({
         const chip = statusChip(message, moderation);
         const verification = verificationsByMessage[message.messageId];
         const isSelected = selectedMessageId === message.messageId;
+        const isSelf = message.senderId === currentUserId;
 
         return (
           <article
             key={message.messageId}
             className={`${styles.message} ${
+              isSelf ? styles.messageSelf : styles.messageOther
+            } ${
               isSelected ? styles.messageSelected : ""
             } ${moderation?.severity === "high" ? styles.messageHighRisk : ""}`}
             onClick={() => {
