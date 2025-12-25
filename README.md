@@ -48,6 +48,12 @@ Without these Microsoft AI services, the application would not be able to delive
 
 ---
 
+## Microsoft AI Services Used
+
+Azure OpenAI generates age-appropriate, scoped guidance; Azure AI Language detects the language and intent of each message; and Azure AI Content Safety moderates student and AI messages before publication.
+
+---
+
 ## Architecture Overview
 
 1. The student submits a question through the web-based chat interface  
