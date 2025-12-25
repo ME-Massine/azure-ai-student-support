@@ -6,6 +6,8 @@ import {
   augmentThread,
   findMessage,
 } from "@/lib/general-chat/store";
+import { analyzeTextSafety } from "@/lib/content-safety/client";
+
 
 export async function POST(req: Request) {
   let body: any;
@@ -44,6 +46,20 @@ export async function POST(req: Request) {
 
   const aiContent = `AI verification: ${record.verificationResult}\nReason: ${record.explanation}\nSources: ${record.officialSourceIds.join(", ")}`;
 
+
+const safety = await analyzeTextSafety(aiContent);
+
+if (safety.blocked) {
+  return NextResponse.json(
+    {
+      error: "Message blocked due to safety policy",
+      categories: safety.categories,
+    },
+    { status: 403 }
+  );
+}
+
+  
   const aiMessage = addMessage({
     threadId: message.threadId,
     senderId: "ai-verifier",

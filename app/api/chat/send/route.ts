@@ -7,6 +7,8 @@ import {
   upsertUser,
 } from "@/lib/general-chat/store";
 import { ChatMessage, User } from "@/lib/general-chat/models";
+import { analyzeTextSafety } from "@/lib/content-safety/client";
+
 
 export async function POST(req: Request) {
   let body: any;
@@ -61,6 +63,18 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: message }, { status });
   }
+
+const safety = await analyzeTextSafety(content);
+
+if (safety.blocked) {
+  return NextResponse.json(
+    {
+      error: "Message blocked due to safety policy",
+      categories: safety.categories,
+    },
+    { status: 403 }
+  );
+}
 
   const created = addMessage({
     threadId: thread.threadId,
