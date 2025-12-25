@@ -22,42 +22,56 @@ function roleBadge(
   role: ChatMessage["senderRole"],
   messageType: ChatMessage["messageType"]
 ) {
-  if (messageType === "ai_verification") return "AI verifier";
+  if (messageType === "ai_verification") return "AI Verifier";
   if (messageType === "system_warning") return "System";
-  if (role === "ai") return "AI";
-  return role === "senior" ? "Senior" : "Student";
+  if (role === "ai") return "AI Assistant";
+  return role === "senior" ? "Senior Student" : "Student";
 }
 
 function verificationBadge(status: ChatMessage["verifiedStatus"]) {
   if (status === "verified") return "Verified";
-  if (status === "partially_verified") return "Partially verified";
-  if (status === "conflict") return "Conflict";
+  if (status === "partially_verified") return "Partially Verified";
+  if (status === "conflict") return "Conflicting Info";
   return "Unverified";
 }
 
 function moderationBadge(severity: ModerationFlag["severity"]) {
-  if (severity === "high") return "High risk";
-  if (severity === "medium") return "Needs review";
-  return "Low risk";
+  if (severity === "high") return "High Risk";
+  if (severity === "medium") return "Review Needed";
+  return "Low Risk";
 }
 
 function statusChip(
   message: ChatMessage,
   moderation?: ModerationFlag
-): string | null {
-  if (moderation) return moderationBadge(moderation.severity);
-  if (message.verifiedStatus !== "unverified")
-    return verificationBadge(message.verifiedStatus);
-  if (message.messageType === "student_answer") return "Pending";
+): { label: string; type: string } | null {
+  if (moderation) {
+    return {
+      label: moderationBadge(moderation.severity),
+      type: moderation.severity,
+    };
+  }
+  if (message.verifiedStatus !== "unverified") {
+    return {
+      label: verificationBadge(message.verifiedStatus),
+      type: message.verifiedStatus,
+    };
+  }
+  if (message.messageType === "student_answer") {
+    return { label: "Pending Review", type: "pending" };
+  }
   return null;
 }
 
-function roleIcon(role: ChatMessage["senderRole"], type: ChatMessage["messageType"]) {
+function roleIcon(
+  role: ChatMessage["senderRole"],
+  type: ChatMessage["messageType"]
+) {
   if (type === "ai_verification") return "✓";
-  if (type === "system_warning") return "!";
+  if (type === "system_warning") return "⚠";
   if (role === "senior") return "★";
-  if (role === "ai") return "🤖";
-  return "👤";
+  if (role === "ai") return "◆";
+  return "●";
 }
 
 export default function GeneralChatPage() {
@@ -65,7 +79,9 @@ export default function GeneralChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(
+    null
+  );
   const [activeTab, setActiveTab] = useState<
     "rules" | "verification" | "moderation"
   >("rules");
@@ -82,7 +98,7 @@ export default function GeneralChatPage() {
       });
 
       if (!res.ok) {
-        setStatus("Unable to start chat.");
+        setStatus("Unable to start chat session.");
         return;
       }
 
@@ -90,17 +106,21 @@ export default function GeneralChatPage() {
       setThread(data.thread);
     } catch (error) {
       console.error("Failed to bootstrap chat thread", error);
-      setStatus("Unable to start chat. Check your connection and retry.");
+      setStatus(
+        "Unable to start chat. Please check your connection and retry."
+      );
     }
   }
 
   useEffect(() => {
     bootstrapThread();
   }, []);
-
+ 
   useEffect(() => {
     if (thread?.messages.length && !selectedMessageId) {
-      setSelectedMessageId(thread.messages[thread.messages.length - 1].messageId);
+      setSelectedMessageId(
+        thread.messages[thread.messages.length - 1].messageId
+      );
     }
   }, [selectedMessageId, thread]);
 
@@ -204,7 +224,7 @@ export default function GeneralChatPage() {
   }
 
   async function verifyWithAI(message: ChatMessage) {
-    setStatus("Requesting verification…");
+    setStatus("Requesting AI verification…");
     try {
       const res = await fetch("/api/chat/verify", {
         method: "POST",
@@ -213,13 +233,13 @@ export default function GeneralChatPage() {
       });
 
       if (!res.ok) {
-        setStatus("Verification failed");
+        setStatus("Verification request failed");
         return;
       }
 
       const data = await res.json();
       setThread(data.thread);
-      setStatus("AI verification posted to the thread.");
+      setStatus("AI verification completed.");
     } catch (error) {
       console.error("Verification request failed", error);
       setStatus("Verification failed. Please check your connection.");
@@ -268,9 +288,10 @@ export default function GeneralChatPage() {
           AI Student Support
         </Link>
         <Link className="nav-tab active" href="/general-chat">
-          Student Chat (ACS)
+          Student Chat
         </Link>
       </nav>
+
       <ChatHeader
         schoolId={thread?.schoolId ?? demoUser.schoolId}
         language={demoUser.language}
@@ -288,8 +309,11 @@ export default function GeneralChatPage() {
         <div className={styles.chatColumn}>
           {highRisk && (
             <div className={styles.threadBanner}>
-              High-risk content detected. Review flagged messages before sharing
-              externally.
+              <span className={styles.bannerIcon}>⚠</span>
+              <div>
+                <strong>High-Risk Content Detected</strong>
+                <p>Review flagged messages before sharing externally.</p>
+              </div>
             </div>
           )}
 
@@ -337,17 +361,26 @@ type ChatHeaderProps = {
 function ChatHeader({ schoolId, language }: ChatHeaderProps) {
   return (
     <header className={styles.header}>
-      <div>
-        <p className={styles.kicker}>Azure Communication Services · Cosmos metadata</p>
-        <h1 className={styles.title}>General Student Chat</h1>
+      <div className={styles.headerContent}>
+        <p className={styles.kicker}>
+          Azure Communication Services · Real-time Moderation
+        </p>
+        <h1 className={styles.title}>Student Chat</h1>
         <p className={styles.subtitle}>
-          Peer chat with AI verification and moderation context—human messages stay
-          immutable while AI posts as separate entries.
+          Peer-to-peer communication with AI-powered verification and content
+          moderation. All messages are immutable; AI responses appear as
+          separate entries.
         </p>
       </div>
       <div className={styles.meta}>
-        <span>School: {schoolId}</span>
-        <span>Language: {language.toUpperCase()}</span>
+        <div className={styles.metaItem}>
+          <span className={styles.metaLabel}>School</span>
+          <span className={styles.metaValue}>{schoolId}</span>
+        </div>
+        <div className={styles.metaItem}>
+          <span className={styles.metaLabel}>Language</span>
+          <span className={styles.metaValue}>{language.toUpperCase()}</span>
+        </div>
       </div>
     </header>
   );
@@ -373,22 +406,40 @@ function ThreadStatusBar({
     moderationFlags.length === 0
       ? "Clear"
       : highRisk
-      ? "High risk"
-      : "Warnings present";
+      ? "High Risk"
+      : "Warnings Present";
 
-  // Inline summary keeps governance signals visible without pulling focus from the chat.
+  const moderationClass = highRisk
+    ? styles.statusDanger
+    : moderationFlags.length > 0
+    ? styles.statusWarning
+    : styles.statusSuccess;
+
   return (
     <div className={styles.statusBar}>
-      <span className={styles.statusPill}>
-        Verified: {verificationCoverage}% ({verifiedCount} of{" "}
-        {verifiedCount + pendingCount})
-      </span>
-      <span className={styles.dividerDot}>•</span>
-      <span className={styles.statusPill}>Moderation: {moderationSummary}</span>
-      <span className={styles.dividerDot}>•</span>
-      <span className={styles.statusPill}>
-        Audit: {auditRecords} record{auditRecords === 1 ? "" : "s"}
-      </span>
+      <div className={styles.statusGroup}>
+        <span className={styles.statusLabel}>Verification</span>
+        <span className={styles.statusValue}>
+          {verificationCoverage}%
+          <span className={styles.statusDetail}>
+            {verifiedCount} of {verifiedCount + pendingCount}
+          </span>
+        </span>
+      </div>
+      <span className={styles.statusDivider} />
+      <div className={styles.statusGroup}>
+        <span className={styles.statusLabel}>Moderation</span>
+        <span className={`${styles.statusValue} ${moderationClass}`}>
+          {moderationSummary}
+        </span>
+      </div>
+      <span className={styles.statusDivider} />
+      <div className={styles.statusGroup}>
+        <span className={styles.statusLabel}>Audit Trail</span>
+        <span className={styles.statusValue}>
+          {auditRecords} {auditRecords === 1 ? "record" : "records"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -420,7 +471,6 @@ function ChatTimeline({
     return <EmptyChatState />;
   }
 
-  // Timeline-first rendering keeps messages primary while allowing deeper review on demand.
   return (
     <div className={styles.messages}>
       {messages.map((message) => {
@@ -433,7 +483,9 @@ function ChatTimeline({
         return (
           <article
             key={message.messageId}
-            className={`${styles.message} ${isSelected ? styles.messageSelected : ""}`}
+            className={`${styles.message} ${
+              isSelected ? styles.messageSelected : ""
+            } ${moderation?.severity === "high" ? styles.messageHighRisk : ""}`}
             onClick={() => {
               onToggleDetails(message.messageId);
               onSelectMessage(message.messageId);
@@ -442,54 +494,92 @@ function ChatTimeline({
             tabIndex={0}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
                 onToggleDetails(message.messageId);
                 onSelectMessage(message.messageId);
               }
             }}
           >
             <div className={styles.messageHeader}>
-              <span className={styles.roleIcon}>
+              <span
+                className={`${styles.roleIcon} ${
+                  styles[`roleIcon${message.senderRole}`]
+                }`}
+              >
                 {roleIcon(message.senderRole, message.messageType)}
               </span>
-              <span className={styles.sender}>
-                {roleBadge(message.senderRole, message.messageType)}
-              </span>
-              <span className={styles.timestamp}>
-                {new Date(message.createdAt).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
-              {chip && <span className={styles.status}>{chip}</span>}
-              {moderation?.severity === "medium" && (
-                <span className={`${styles.status} ${styles.inlineWarn}`}>
-                  Needs review
+              <div className={styles.messageHeaderInfo}>
+                <span className={styles.sender}>
+                  {roleBadge(message.senderRole, message.messageType)}
                 </span>
-              )}
-              {moderation?.severity === "low" && (
-                <span className={styles.iconOnly} title="Low risk">
-                  ●
+                <span className={styles.timestamp}>
+                  {new Date(message.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              </div>
+              {chip && (
+                <span
+                  className={`${styles.statusChip} ${
+                    styles[`chip${chip.type}`]
+                  }`}
+                >
+                  {chip.label}
                 </span>
               )}
               <button
                 className={styles.chevron}
                 aria-label={isExpanded ? "Collapse details" : "Expand details"}
+                onClick={(e) => e.stopPropagation()}
               >
-                {isExpanded ? "▾" : "▸"}
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  style={{
+                    transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                  }}
+                >
+                  <path
+                    d="M4 6L8 10L12 6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </div>
 
             <p className={styles.content}>{message.content}</p>
 
             <div className={styles.messageFoot}>
-              <span className={styles.roleTag}>
+              <span
+                className={`${styles.roleTag} ${
+                  styles[`tag${message.senderRole}`]
+                }`}
+              >
                 {message.senderRole === "student" ? "Human" : "AI"}
               </span>
               {verification && (
-                <span className={styles.footNote}>AI verification noted</span>
+                <span className={styles.footBadge}>
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                    <path
+                      d="M10 3L4.5 8.5L2 6"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Verified
+                </span>
               )}
-              {moderation && (
-                <span className={styles.footNote}>
+              {moderation && moderation.severity !== "low" && (
+                <span className={styles.footBadge}>
                   {moderationBadge(moderation.severity)}
                 </span>
               )}
@@ -497,32 +587,38 @@ function ChatTimeline({
 
             {isExpanded && (
               <div className={styles.detailsPanel}>
-                <div className={styles.detailRow}>
-                  <div className={styles.detailLabel}>Verification</div>
-                  <div className={styles.detailBody}>
-                    {verification ? verification : "Not yet requested"}
+                <div className={styles.detailGrid}>
+                  <div className={styles.detailItem}>
+                    <div className={styles.detailLabel}>
+                      Verification Status
+                    </div>
+                    <div className={styles.detailBody}>
+                      {verification || "Not yet requested"}
+                    </div>
                   </div>
-                </div>
-                <div className={styles.detailRow}>
-                  <div className={styles.detailLabel}>Moderation</div>
-                  <div className={styles.detailBody}>
-                    {moderation
-                      ? `${moderationBadge(moderation.severity)} · ${moderation.reason}`
-                      : "No issues detected"}
+                  <div className={styles.detailItem}>
+                    <div className={styles.detailLabel}>Moderation Check</div>
+                    <div className={styles.detailBody}>
+                      {moderation
+                        ? `${moderationBadge(moderation.severity)} · ${
+                            moderation.reason
+                          }`
+                        : "No issues detected"}
+                    </div>
                   </div>
-                </div>
-                <div className={styles.detailRow}>
-                  <div className={styles.detailLabel}>Official sources</div>
-                  <div className={styles.detailBody}>
-                    {officialSourcesByMessage[message.messageId]?.length
-                      ? officialSourcesByMessage[message.messageId].join(", ")
-                      : "None referenced"}
+                  <div className={styles.detailItem}>
+                    <div className={styles.detailLabel}>Official Sources</div>
+                    <div className={styles.detailBody}>
+                      {officialSourcesByMessage[message.messageId]?.length
+                        ? officialSourcesByMessage[message.messageId].join(", ")
+                        : "None referenced"}
+                    </div>
                   </div>
-                </div>
-                <div className={styles.detailRow}>
-                  <div className={styles.detailLabel}>Timestamp</div>
-                  <div className={styles.detailBody}>
-                    {new Date(message.createdAt).toLocaleString()}
+                  <div className={styles.detailItem}>
+                    <div className={styles.detailLabel}>Full Timestamp</div>
+                    <div className={styles.detailBody}>
+                      {new Date(message.createdAt).toLocaleString()}
+                    </div>
                   </div>
                 </div>
                 {message.messageType === "student_answer" && (
@@ -534,7 +630,21 @@ function ChatTimeline({
                       }}
                       className={styles.verifyBtn}
                     >
-                      Verify with AI
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 14 14"
+                        fill="none"
+                      >
+                        <path
+                          d="M12 4L5.5 10.5L2 7"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      Request AI Verification
                     </button>
                   </div>
                 )}
@@ -550,10 +660,29 @@ function ChatTimeline({
 function EmptyChatState() {
   return (
     <div className={styles.emptyState}>
-      <div className={styles.emptyBadge}>Chat ready</div>
-      <p className={styles.emptyTitle}>No messages yet.</p>
+      <div className={styles.emptyIcon}>
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <rect
+            x="8"
+            y="12"
+            width="32"
+            height="24"
+            rx="4"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+          <path
+            d="M8 20h32M16 16v-4M32 16v-4"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <p className={styles.emptyTitle}>Chat Ready</p>
       <p className={styles.emptyBody}>
-        Start a conversation. AI verification appears after posting.
+        Start a conversation. AI verification and moderation checks will appear
+        automatically after posting.
       </p>
     </div>
   );
@@ -575,23 +704,46 @@ function MessageComposer({
   status,
 }: MessageComposerProps) {
   return (
-    <div className={styles.inputRow}>
+    <div className={styles.composer}>
       <label className={styles.visuallyHidden} htmlFor="composer">
         Message composer
       </label>
       <textarea
         id="composer"
-        placeholder="Type a message for classmates…"
+        className={styles.composerTextarea}
+        placeholder="Type your message…"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            onSend();
+          }
+        }}
         rows={3}
         disabled={loading}
       />
-      <div className={styles.inputActions}>
-        <button onClick={onSend} disabled={!value.trim() || loading}>
+      <div className={styles.composerFooter}>
+        <span className={styles.composerHint}>
+          {loading ? "Sending…" : "⌘ + Enter to send"}
+        </span>
+        {status && <span className={styles.composerStatus}>{status}</span>}
+        <button
+          className={styles.sendBtn}
+          onClick={onSend}
+          disabled={!value.trim() || loading}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path
+              d="M2 8h12M10 4l4 4-4 4"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
           Send
         </button>
-        {status && <span className={styles.statusText}>{status}</span>}
       </div>
     </div>
   );
@@ -625,9 +777,8 @@ function ContextSidebar({
     selectedMessage?.messageId &&
     officialSourcesByMessage[selectedMessage.messageId]?.length
       ? officialSourcesByMessage[selectedMessage.messageId]?.join(", ")
-      : "n/a";
+      : "None";
 
-  // Context panel stays lighter-weight so it supports the chat without competing with it.
   return (
     <aside className={styles.sidebar}>
       <SidebarTabs
@@ -642,43 +793,63 @@ function ContextSidebar({
         {activeTab === "verification" && (
           <div className={styles.sidebarSection}>
             <div className={styles.sidebarHeader}>
-              <h3>Verification summary</h3>
-              <span className={styles.sidebarPill}>
-                {selectedMessage?.messageId ?? "No selection"}
-              </span>
+              <h3 className={styles.sidebarTitle}>Verification Details</h3>
+              {selectedMessage && (
+                <span className={styles.sidebarBadge}>
+                  {selectedMessage.messageId.slice(0, 8)}
+                </span>
+              )}
             </div>
-            <p className={styles.sidebarBody}>
-              {verificationText ?? "No AI verification yet."}
-            </p>
-            <p className={styles.sidebarMeta}>Sources: {verificationSources}</p>
+            <div className={styles.sidebarContent}>
+              {verificationText ? (
+                <>
+                  <p className={styles.sidebarText}>{verificationText}</p>
+                  <div className={styles.sidebarMeta}>
+                    <strong>Sources:</strong> {verificationSources}
+                  </div>
+                </>
+              ) : (
+                <p className={styles.sidebarEmpty}>
+                  No AI verification available for this message.
+                </p>
+              )}
+            </div>
           </div>
         )}
 
         {activeTab === "moderation" && (
           <div className={styles.sidebarSection}>
             <div className={styles.sidebarHeader}>
-              <h3>Moderation log</h3>
-              <span className={styles.sidebarMeta}>
-                {moderationFlags.length} item
-                {moderationFlags.length === 1 ? "" : "s"}
+              <h3 className={styles.sidebarTitle}>Moderation Log</h3>
+              <span className={styles.sidebarCount}>
+                {moderationFlags.length}
               </span>
             </div>
-            <ul className={styles.flagListCompact}>
-              {moderationFlags.map((flag) => (
-                <li key={flag.flagId} className={styles.flagItem}>
-                  <span className={`${styles.flagPill} ${styles[flag.severity]}`}>
-                    {moderationBadge(flag.severity)}
-                  </span>
-                  <div>
-                    <div className={styles.flagReason}>{flag.reason}</div>
-                    <div className={styles.flagMeta}>Message: {flag.messageId}</div>
-                  </div>
-                </li>
-              ))}
-              {moderationFlags.length === 0 && (
-                <li className={styles.flagItemMuted}>No moderation events.</li>
-              )}
-            </ul>
+            {moderationFlags.length > 0 ? (
+              <ul className={styles.flagList}>
+                {moderationFlags.map((flag) => (
+                  <li key={flag.flagId} className={styles.flagItem}>
+                    <div
+                      className={`${styles.flagSeverity} ${
+                        styles[`severity${flag.severity}`]
+                      }`}
+                    >
+                      {moderationBadge(flag.severity)}
+                    </div>
+                    <div className={styles.flagContent}>
+                      <div className={styles.flagReason}>{flag.reason}</div>
+                      <div className={styles.flagMeta}>
+                        Message ID: {flag.messageId.slice(0, 12)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className={styles.sidebarEmpty}>
+                No moderation events recorded.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -692,25 +863,32 @@ type SidebarTabsProps = {
   disableDataTabs: boolean;
 };
 
-function SidebarTabs({ activeTab, onTabChange, disableDataTabs }: SidebarTabsProps) {
+function SidebarTabs({
+  activeTab,
+  onTabChange,
+  disableDataTabs,
+}: SidebarTabsProps) {
+  const tabs = [
+    { id: "rules" as const, label: "Rules", icon: "📋" },
+    { id: "verification" as const, label: "Verification", icon: "✓" },
+    { id: "moderation" as const, label: "Moderation", icon: "⚠" },
+  ];
+
   return (
     <div className={styles.tabList}>
-      {(["rules", "verification", "moderation"] as const).map((tab) => {
-        const isDisabled = disableDataTabs && tab !== "rules";
+      {tabs.map((tab) => {
+        const isDisabled = disableDataTabs && tab.id !== "rules";
         return (
           <button
-            key={tab}
-            className={`${styles.tab} ${activeTab === tab ? styles.activeTab : ""} ${
-              isDisabled ? styles.tabDisabled : ""
-            }`}
+            key={tab.id}
+            className={`${styles.tab} ${
+              activeTab === tab.id ? styles.activeTab : ""
+            } ${isDisabled ? styles.tabDisabled : ""}`}
             disabled={isDisabled}
-            onClick={() => onTabChange(tab)}
+            onClick={() => onTabChange(tab.id)}
           >
-            {tab === "rules"
-              ? "Official Rules"
-              : tab === "verification"
-              ? "Verification"
-              : "Moderation"}
+            <span className={styles.tabIcon}>{tab.icon}</span>
+            {tab.label}
           </button>
         );
       })}
@@ -728,8 +906,10 @@ function OfficialRulesPanel({ rules }: OfficialRulesPanelProps) {
   if (!rules.length) {
     return (
       <div className={styles.sidebarSection}>
-        <h3>Official rules</h3>
-        <p className={styles.sidebarMeta}>No rules provided.</p>
+        <h3 className={styles.sidebarTitle}>Official Rules</h3>
+        <p className={styles.sidebarEmpty}>
+          No official rules have been configured.
+        </p>
       </div>
     );
   }
@@ -737,9 +917,12 @@ function OfficialRulesPanel({ rules }: OfficialRulesPanelProps) {
   return (
     <div className={styles.sidebarSection}>
       <div className={styles.sidebarHeader}>
-        <h3>Official rules</h3>
-        <p className={styles.small}>AI references only approved sources.</p>
+        <h3 className={styles.sidebarTitle}>Official Rules</h3>
+        <span className={styles.sidebarCount}>{rules.length}</span>
       </div>
+      <p className={styles.sidebarDescription}>
+        AI responses reference only these approved sources.
+      </p>
       <ul className={styles.ruleList}>
         {rules.map((rule) => {
           const isExpanded = expanded[rule.ruleId];
@@ -748,22 +931,26 @@ function OfficialRulesPanel({ rules }: OfficialRulesPanelProps) {
               ? `${rule.content.slice(0, 140)}…`
               : rule.content;
 
-          // Summaries keep rules scannable; expand only when the user asks.
           return (
             <li key={rule.ruleId} className={styles.ruleCard}>
               <div className={styles.ruleHeader}>
                 <div className={styles.ruleTitle}>{rule.title}</div>
-                <span className={styles.ruleMeta}>Category: {rule.category}</span>
+                <span className={styles.ruleCategory}>{rule.category}</span>
               </div>
               <p className={styles.ruleContent}>{preview}</p>
-              <button
-                className={styles.ruleToggle}
-                onClick={() =>
-                  setExpanded((prev) => ({ ...prev, [rule.ruleId]: !isExpanded }))
-                }
-              >
-                {isExpanded ? "Hide full text" : "Show full text"}
-              </button>
+              {rule.content.length > 140 && (
+                <button
+                  className={styles.ruleToggle}
+                  onClick={() =>
+                    setExpanded((prev) => ({
+                      ...prev,
+                      [rule.ruleId]: !isExpanded,
+                    }))
+                  }
+                >
+                  {isExpanded ? "Show less" : "Show more"}
+                </button>
+              )}
             </li>
           );
         })}
