@@ -90,11 +90,13 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  min-height: 240px;
+  min-height: 320px;
+  max-height: 520px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px;
+  overflow-y: auto;
 }
 
 .message {
@@ -107,6 +109,8 @@
   gap: 8px;
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
+  align-self: flex-start;
+  max-width: 82%;
 }
 
 .message:hover {
@@ -171,6 +175,16 @@
   border: none;
   color: var(--muted);
   cursor: pointer;
+}
+
+.myMessage {
+  margin-left: auto;
+  background: rgba(125, 211, 252, 0.06);
+  border-color: rgba(125, 211, 252, 0.3);
+}
+
+.otherMessage {
+  margin-right: auto;
 }
 
 .content {

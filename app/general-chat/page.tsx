@@ -429,11 +429,14 @@ function ChatTimeline({
         const chip = statusChip(message, moderation);
         const verification = verificationsByMessage[message.messageId];
         const isSelected = selectedMessageId === message.messageId;
+        const isStudent = message.senderRole === "student";
 
         return (
           <article
             key={message.messageId}
-            className={`${styles.message} ${isSelected ? styles.messageSelected : ""}`}
+            className={`${styles.message} ${isSelected ? styles.messageSelected : ""} ${
+              isStudent ? styles.myMessage : styles.otherMessage
+            }`}
             onClick={() => {
               onToggleDetails(message.messageId);
               onSelectMessage(message.messageId);
