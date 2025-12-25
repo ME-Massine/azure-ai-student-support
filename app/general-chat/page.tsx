@@ -327,6 +327,7 @@ export default function GeneralChatPage() {
             moderationByMessage={moderationByMessage}
             officialSourcesByMessage={officialSourcesByMessage}
             onVerify={verifyWithAI}
+            currentUserId={demoUser.userId}
           />
 
           <MessageComposer
@@ -454,6 +455,7 @@ type ChatTimelineProps = {
   moderationByMessage: Record<string, ModerationFlag[]>;
   officialSourcesByMessage: Record<string, string[]>;
   onVerify: (message: ChatMessage) => void;
+  currentUserId: string;
 };
 
 function ChatTimeline({
@@ -466,6 +468,7 @@ function ChatTimeline({
   moderationByMessage,
   officialSourcesByMessage,
   onVerify,
+  currentUserId,
 }: ChatTimelineProps) {
   if (!messages.length) {
     return <EmptyChatState />;
@@ -479,11 +482,14 @@ function ChatTimeline({
         const chip = statusChip(message, moderation);
         const verification = verificationsByMessage[message.messageId];
         const isSelected = selectedMessageId === message.messageId;
+        const isSelf = message.senderId === currentUserId;
 
         return (
           <article
             key={message.messageId}
             className={`${styles.message} ${
+              isSelf ? styles.messageSelf : styles.messageOther
+            } ${
               isSelected ? styles.messageSelected : ""
             } ${moderation?.severity === "high" ? styles.messageHighRisk : ""}`}
             onClick={() => {
