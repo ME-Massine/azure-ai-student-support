@@ -151,16 +151,30 @@
 
 /* Banner Refinements */
 .threadBanner {
-  background: linear-gradient(135deg, rgba(248, 113, 113, 0.12), rgba(239, 68, 68, 0.08));
-  border: 1px solid rgba(248, 113, 113, 0.3);
-  border-left: 4px solid #ef4444;
-  color: #fecdd3;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  color: var(--text);
   padding: 14px 16px;
   border-radius: 12px;
   display: flex;
   align-items: flex-start;
   gap: 12px;
   animation: slideDown 0.3s ease;
+}
+
+.bannerHigh {
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.1), rgba(239, 68, 68, 0.05));
+  border-color: rgba(248, 113, 113, 0.4);
+  border-left-color: #ef4444;
+  color: #fecdd3;
+}
+
+.bannerWarning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(234, 179, 8, 0.06));
+  border-color: rgba(245, 158, 11, 0.4);
+  border-left-color: #f59e0b;
+  color: #fef3c7;
 }
 
 @keyframes slideDown {

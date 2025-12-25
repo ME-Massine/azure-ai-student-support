@@ -18,6 +18,88 @@ const demoUser: User = {
   language: "en",
 };
 
+const CONTENT_SAFETY_ESCALATION_THRESHOLD = 3;
+const CONTENT_SAFETY_SENSITIVE_CATEGORIES = ["SelfHarm", "Violence"];
+
+type MessageRiskLevel = "low" | "medium" | "high";
+type AggregateRiskLevel =
+  | "informational"
+  | "attention_required"
+  | "escalation_required";
+
+function contentSafetySignal(metadata?: ModerationFlag["metadata"]) {
+  if (!metadata || metadata.source !== "azure_content_safety") {
+    return { maxSeverity: 0, hasSensitiveCategory: false };
+  }
+
+  const categories = metadata.categories ?? {};
+  const severityValues = Object.values(categories);
+  const maxSeverity = severityValues.length ? Math.max(...severityValues) : 0;
+  const hasSensitiveCategory = CONTENT_SAFETY_SENSITIVE_CATEGORIES.some(
+    (category) => (categories[category] ?? 0) > 0
+  );
+
+  return { maxSeverity, hasSensitiveCategory };
+}
+
+function hasContentSafetyAttention(flags: ModerationFlag[]) {
+  return flags.some((flag) => {
+    const { maxSeverity } = contentSafetySignal(flag.metadata);
+    return maxSeverity > 0;
+  });
+}
+
+function hasContentSafetyEscalation(flags: ModerationFlag[]) {
+  return flags.some((flag) => {
+    const { maxSeverity, hasSensitiveCategory } = contentSafetySignal(
+      flag.metadata
+    );
+    return (
+      maxSeverity >= CONTENT_SAFETY_ESCALATION_THRESHOLD || hasSensitiveCategory
+    );
+  });
+}
+
+function deriveMessageRisk(flags: ModerationFlag[]): MessageRiskLevel {
+  if (hasContentSafetyEscalation(flags) || flags.some((f) => f.severity === "high")) {
+    return "high";
+  }
+
+  if (
+    flags.some((f) => f.severity === "medium") ||
+    hasContentSafetyAttention(flags)
+  ) {
+    return "medium";
+  }
+
+  return "low";
+}
+
+function deriveAggregateRisk(flags: ModerationFlag[]): AggregateRiskLevel {
+  if (hasContentSafetyEscalation(flags)) return "escalation_required";
+
+  if (
+    flags.some((flag) => flag.severity === "medium" || flag.severity === "high") ||
+    hasContentSafetyAttention(flags)
+  ) {
+    return "attention_required";
+  }
+
+  return "informational";
+}
+
+function aggregateRiskLabel(level: AggregateRiskLevel) {
+  if (level === "escalation_required") return "Escalation required";
+  if (level === "attention_required") return "Attention required";
+  return "Informational";
+}
+
+function messageRiskLabel(level: MessageRiskLevel) {
+  if (level === "high") return "High Risk";
+  if (level === "medium") return "Medium Risk";
+  return "Low Risk";
+}
+
 function roleBadge(
   role: ChatMessage["senderRole"],
   messageType: ChatMessage["messageType"]
@@ -37,7 +119,7 @@ function verificationBadge(status: ChatMessage["verifiedStatus"]) {
 
 function moderationBadge(severity: ModerationFlag["severity"]) {
   if (severity === "high") return "High Risk";
-  if (severity === "medium") return "Review Needed";
+  if (severity === "medium") return "Medium Risk";
   return "Low Risk";
 }
 
@@ -61,13 +143,15 @@ function statusChip(
   moderationFlags: ModerationFlag[]
 ): { label: string; type: string } | null {
   const moderation = selectPriorityModeration(moderationFlags);
+  const messageRisk = deriveMessageRisk(moderationFlags);
 
   if (moderation) {
     return {
-      label: moderationBadge(moderation.severity),
-      type: moderation.severity,
+      label: messageRiskLabel(messageRisk),
+      type: messageRisk,
     };
   }
+
   if (message.verifiedStatus !== "unverified") {
     return {
       label: verificationBadge(message.verifiedStatus),
@@ -148,10 +232,16 @@ export default function GeneralChatPage() {
     [thread]
   );
 
-  const highRisk = useMemo(
-    () => moderationFlags.some((flag) => flag.severity === "high"),
+  const aggregateRisk = useMemo(
+    () => deriveAggregateRisk(moderationFlags),
     [moderationFlags]
   );
+
+  const aggregateRiskAsMessageLevel = useMemo<MessageRiskLevel>(() => {
+    if (aggregateRisk === "escalation_required") return "high";
+    if (aggregateRisk === "attention_required") return "medium";
+    return "low";
+  }, [aggregateRisk]);
 
   const studentMessages = useMemo(
     () =>
@@ -177,6 +267,14 @@ export default function GeneralChatPage() {
     });
     return lookup;
   }, [moderationFlags]);
+
+  const messageRiskById = useMemo(() => {
+    const lookup: Record<string, MessageRiskLevel> = {};
+    Object.entries(moderationByMessage).forEach(([messageId, flags]) => {
+      lookup[messageId] = deriveMessageRisk(flags);
+    });
+    return lookup;
+  }, [moderationByMessage]);
 
   async function refreshThread(threadId: string) {
     const res = await fetch(`/api/chat/thread?threadId=${threadId}`);
@@ -317,6 +415,15 @@ export default function GeneralChatPage() {
     return thread.messages[thread.messages.length - 1];
   }, [selectedMessageId, thread]);
 
+  const selectedMessageRisk: MessageRiskLevel =
+    (selectedMessage && messageRiskById[selectedMessage.messageId]) || "low";
+
+  const showHighRiskBanner = hasContentSafetyEscalation(moderationFlags);
+  const showAttentionBanner =
+    !showHighRiskBanner &&
+    aggregateRisk !== "informational" &&
+    aggregateRiskAsMessageLevel !== selectedMessageRisk;
+
   return (
     <main className={styles.shell}>
       <nav className="global-nav">
@@ -339,16 +446,33 @@ export default function GeneralChatPage() {
         pendingCount={studentMessages.length - verifiedMessages.length}
         moderationFlags={moderationFlags}
         auditRecords={thread?.verifications.length ?? 0}
+        aggregateRisk={aggregateRisk}
       />
 
       <section className={styles.grid}>
         <div className={styles.chatColumn}>
-          {highRisk && (
-            <div className={styles.threadBanner}>
-              <span className={styles.bannerIcon}>⚠</span>
+          {showHighRiskBanner && (
+            <div className={`${styles.threadBanner} ${styles.bannerHigh}`}>
+              <span className={styles.bannerIcon}>⛔</span>
               <div>
                 <strong>High-Risk Content Detected</strong>
-                <p>Review flagged messages before sharing externally.</p>
+                <p>
+                  Content Safety flagged severe or sensitive categories. Escalate
+                  before sharing externally.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {showAttentionBanner && (
+            <div className={`${styles.threadBanner} ${styles.bannerWarning}`}>
+              <span className={styles.bannerIcon}>⚠</span>
+              <div>
+                <strong>Attention Required</strong>
+                <p>
+                  Some messages contain signals that require review, but no
+                  immediate escalation is needed.
+                </p>
               </div>
             </div>
           )}
@@ -364,6 +488,7 @@ export default function GeneralChatPage() {
             officialSourcesByMessage={officialSourcesByMessage}
             onVerify={verifyWithAI}
             currentUserId={demoUser.userId}
+            messageRiskById={messageRiskById}
           />
 
           <MessageComposer
@@ -429,6 +554,7 @@ type ThreadStatusBarProps = {
   pendingCount: number;
   moderationFlags: ModerationFlag[];
   auditRecords: number;
+  aggregateRisk: AggregateRiskLevel;
 };
 
 function ThreadStatusBar({
@@ -437,23 +563,22 @@ function ThreadStatusBar({
   pendingCount,
   moderationFlags,
   auditRecords,
+  aggregateRisk,
 }: ThreadStatusBarProps) {
-  const highRisk = moderationFlags.some((flag) => flag.severity === "high");
   const actionableModeration = moderationFlags.some(
     (flag) => flag.severity !== "low"
   );
   const moderationSummary =
     moderationFlags.length === 0 || !actionableModeration
-      ? "Clear"
-      : highRisk
-      ? "High Risk"
-      : "Warnings Present";
+      ? "Informational"
+      : aggregateRiskLabel(aggregateRisk);
 
-  const moderationClass = highRisk
-    ? styles.statusDanger
-    : actionableModeration
-    ? styles.statusWarning
-    : styles.statusSuccess;
+  const moderationClass =
+    aggregateRisk === "escalation_required"
+      ? styles.statusDanger
+      : aggregateRisk === "attention_required"
+      ? styles.statusWarning
+      : styles.statusSuccess;
 
   return (
     <div className={styles.statusBar}>
@@ -495,6 +620,7 @@ type ChatTimelineProps = {
   officialSourcesByMessage: Record<string, string[]>;
   onVerify: (message: ChatMessage) => void;
   currentUserId: string;
+  messageRiskById: Record<string, MessageRiskLevel>;
 };
 
 function ChatTimeline({
@@ -508,6 +634,7 @@ function ChatTimeline({
   officialSourcesByMessage,
   onVerify,
   currentUserId,
+  messageRiskById,
 }: ChatTimelineProps) {
   if (!messages.length) {
     return <EmptyChatState />;
@@ -529,13 +656,14 @@ function ChatTimeline({
         const verification = verificationsByMessage[message.messageId];
         const isSelected = selectedMessageId === message.messageId;
         const isStudent = message.senderRole === "student";
+        const messageRisk = messageRiskById[message.messageId] ?? "low";
 
         return (
           <article
             key={message.messageId}
             className={`${styles.message} ${isSelected ? styles.messageSelected : ""} ${
               isStudent ? styles.myMessage : styles.otherMessage
-            }`}
+            } ${messageRisk === "high" ? styles.messageHighRisk : ""}`}
             onClick={() => {
               onToggleDetails(message.messageId);
               onSelectMessage(message.messageId);
