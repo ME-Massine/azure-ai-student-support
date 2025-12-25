@@ -1,0 +1,30 @@
+{
+  "rules": {
+    "title": "Reglamento escolar",
+    "items": [
+      "La asistencia es obligatoria a todas las clases programadas a menos que tengas una excusa escrita de la oficina escolar.",
+      "Las fechas límite oficiales para agregar, abandonar o retirar cursos siguen el calendario académico publicado por la secretaría.",
+      "El uso de herramientas de IA en las tareas debe cumplir con las políticas de cada curso; siempre cita las herramientas y fuentes autorizadas.",
+      "Las credenciales de identificación deben usarse en el campus y mostrarse al personal cuando se solicite."
+    ]
+  },
+  "rights": {
+    "title": "Derechos estudiantiles",
+    "items": [
+      "Puedes solicitar en cualquier momento una copia oficial del código de conducta a la Oficina de Asuntos Estudiantiles.",
+      "Tienes derecho a apelar decisiones disciplinarias dentro de los 10 días hábiles posteriores a la notificación.",
+      "Las solicitudes de acomodaciones académicas se revisan de forma confidencial por la oficina de accesibilidad.",
+      "Todas las calificaciones pueden revisarse a través de la secretaría si presentas una solicitud formal de reconsideración."
+    ]
+  },
+  "help": {
+    "title": "¿Qué debo hacer?",
+    "items": [
+      "Si faltas a una clase o evaluación, informa a tu profesor y presenta el formulario de ausencia dentro de los dos días.",
+      "Para problemas de seguridad en el campus, llama a la seguridad del campus y comparte el número de incidente con Asuntos Estudiantiles.",
+      "Actualiza tu dirección, teléfono y contactos de emergencia en el portal estudiantil cada periodo.",
+      "Agenda orientación académica reservando en el portal de asesoría o visitando el mostrador de asesoría en persona."
+    ]
+  },
+  "footer": "Información oficial emitida por Asuntos Estudiantiles · Año académico 2024-2025"
+}
