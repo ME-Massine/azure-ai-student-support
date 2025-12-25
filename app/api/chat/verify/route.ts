@@ -5,9 +5,9 @@ import {
   addVerification,
   augmentThread,
   findMessage,
+  addModerationFlag,
 } from "@/lib/general-chat/store";
 import { analyzeTextSafety } from "@/lib/content-safety/client";
-
 
 export async function POST(req: Request) {
   let body: any;
@@ -46,20 +46,45 @@ export async function POST(req: Request) {
 
   const aiContent = `AI verification: ${record.verificationResult}\nReason: ${record.explanation}\nSources: ${record.officialSourceIds.join(", ")}`;
 
+  const safetyCheckedAt = new Date().toISOString();
+  const safety = await analyzeTextSafety(aiContent);
+  const safetyMetadata = {
+    source: "azure_content_safety",
+    categories: safety.categories,
+    blocked: safety.blocked,
+    createdAt: safetyCheckedAt,
+  };
 
-const safety = await analyzeTextSafety(aiContent);
+  if (safety.blocked) {
+    const systemMessage = addMessage({
+      threadId: message.threadId,
+      senderId: "system-content-safety",
+      senderRole: "ai",
+      content: "This message could not be posted due to school safety policy.",
+      createdAt: safetyCheckedAt,
+      messageType: "system_warning",
+      verifiedStatus: message.verifiedStatus,
+      relatedMessageId: message.messageId,
+    });
 
-if (safety.blocked) {
-  return NextResponse.json(
-    {
-      error: "Message blocked due to safety policy",
-      categories: safety.categories,
-    },
-    { status: 403 }
-  );
-}
+    const moderation = addModerationFlag({
+      messageId: systemMessage.messageId,
+      severity: "high",
+      reason: "Azure Content Safety blocked an AI verification.",
+      createdAt: safetyCheckedAt,
+      actionTaken: "warning_posted",
+      metadata: safetyMetadata,
+    });
 
-  
+    return NextResponse.json({
+      blocked: true,
+      verification: record,
+      moderation,
+      systemMessage,
+      thread: augmentThread(message.threadId),
+    });
+  }
+
   const aiMessage = addMessage({
     threadId: message.threadId,
     senderId: "ai-verifier",
@@ -69,6 +94,15 @@ if (safety.blocked) {
     messageType: "ai_verification",
     verifiedStatus: "verified",
     relatedMessageId: message.messageId,
+  });
+
+  addModerationFlag({
+    messageId: aiMessage.messageId,
+    severity: "low",
+    reason: "Azure Content Safety scan completed.",
+    createdAt: safetyCheckedAt,
+    actionTaken: "none",
+    metadata: safetyMetadata,
   });
 
   return NextResponse.json({

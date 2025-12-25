@@ -59,6 +59,13 @@ export interface AIVerification {
 export type ModerationSeverity = "low" | "medium" | "high";
 export type ModerationAction = "none" | "warning_posted" | "review_required";
 
+export interface ModerationMetadata {
+  source: string;
+  categories: Record<string, number>;
+  blocked: boolean;
+  createdAt: string;
+}
+
 export interface ModerationFlag {
   flagId: string;
   messageId: string;
@@ -66,6 +73,7 @@ export interface ModerationFlag {
   reason: string;
   actionTaken: ModerationAction;
   createdAt: string;
+  metadata?: ModerationMetadata;
 }
 
 export type RuleCategory =

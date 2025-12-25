@@ -41,10 +41,27 @@ function moderationBadge(severity: ModerationFlag["severity"]) {
   return "Low Risk";
 }
 
+function selectPriorityModeration(flags: ModerationFlag[]) {
+  const severityOrder: Record<ModerationFlag["severity"], number> = {
+    low: 1,
+    medium: 2,
+    high: 3,
+  };
+
+  return flags.reduce<ModerationFlag | undefined>((top, flag) => {
+    if (!top) return flag;
+    return severityOrder[flag.severity] > severityOrder[top.severity]
+      ? flag
+      : top;
+  }, undefined);
+}
+
 function statusChip(
   message: ChatMessage,
-  moderation?: ModerationFlag
+  moderationFlags: ModerationFlag[]
 ): { label: string; type: string } | null {
+  const moderation = selectPriorityModeration(moderationFlags);
+
   if (moderation) {
     return {
       label: moderationBadge(moderation.severity),
@@ -206,13 +223,21 @@ export default function GeneralChatPage() {
         }),
       });
 
-      if (!res.ok) {
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data) {
         setStatus("Message failed to send.");
         return;
       }
 
-      const data = await res.json();
       setThread(data.thread);
+
+      if (data.blocked) {
+        setStatus("This message could not be posted due to school safety policy.");
+        setInput("");
+        return;
+      }
+
       setInput("");
 
       if (data.message?.messageId) {
@@ -237,8 +262,19 @@ export default function GeneralChatPage() {
         return;
       }
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        setStatus("Verification request failed");
+        return;
+      }
+
       setThread(data.thread);
+
+      if (data.blocked) {
+        setStatus("This message could not be posted due to school safety policy.");
+        return;
+      }
+
       setStatus("AI verification completed.");
     } catch (error) {
       console.error("Verification request failed", error);
@@ -403,8 +439,11 @@ function ThreadStatusBar({
   auditRecords,
 }: ThreadStatusBarProps) {
   const highRisk = moderationFlags.some((flag) => flag.severity === "high");
+  const actionableModeration = moderationFlags.some(
+    (flag) => flag.severity !== "low"
+  );
   const moderationSummary =
-    moderationFlags.length === 0
+    moderationFlags.length === 0 || !actionableModeration
       ? "Clear"
       : highRisk
       ? "High Risk"
@@ -412,7 +451,7 @@ function ThreadStatusBar({
 
   const moderationClass = highRisk
     ? styles.statusDanger
-    : moderationFlags.length > 0
+    : actionableModeration
     ? styles.statusWarning
     : styles.statusSuccess;
 
@@ -478,8 +517,15 @@ function ChatTimeline({
     <div className={styles.messages}>
       {messages.map((message) => {
         const isExpanded = expandedMessages[message.messageId];
-        const moderation = moderationByMessage[message.messageId]?.[0];
-        const chip = statusChip(message, moderation);
+        const messageModerationFlags =
+          moderationByMessage[message.messageId] ?? [];
+        const contentSafetyFlag = messageModerationFlags.find(
+          (flag) => flag.metadata?.source === "azure_content_safety"
+        );
+        const chip = statusChip(message, messageModerationFlags);
+        const priorityModeration = selectPriorityModeration(
+          messageModerationFlags
+        );
         const verification = verificationsByMessage[message.messageId];
         const isSelected = selectedMessageId === message.messageId;
         const isStudent = message.senderRole === "student";
@@ -582,9 +628,30 @@ function ChatTimeline({
                   Verified
                 </span>
               )}
-              {moderation && moderation.severity !== "low" && (
+              {priorityModeration && priorityModeration.severity !== "low" && (
                 <span className={styles.footBadge}>
-                  {moderationBadge(moderation.severity)}
+                  {moderationBadge(priorityModeration.severity)}
+                </span>
+              )}
+              {contentSafetyFlag && (
+                <span
+                  className={`${styles.footBadge} ${styles.safetyFootBadge}`}
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    fill="none"
+                  >
+                    <path
+                      d="M2 6.5L5 9.5L10 2.5"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Safety checked (Microsoft Content Safety)
                 </span>
               )}
             </div>
@@ -603,11 +670,44 @@ function ChatTimeline({
                   <div className={styles.detailItem}>
                     <div className={styles.detailLabel}>Moderation Check</div>
                     <div className={styles.detailBody}>
-                      {moderation
-                        ? `${moderationBadge(moderation.severity)} · ${
-                            moderation.reason
+                      {priorityModeration
+                        ? `${moderationBadge(priorityModeration.severity)} · ${
+                            priorityModeration.reason
                           }`
                         : "No issues detected"}
+                    </div>
+                  </div>
+                  <div className={styles.detailItem}>
+                    <div className={styles.detailLabel}>Content Safety</div>
+                    <div className={styles.detailBody}>
+                      {contentSafetyFlag ? (
+                        <>
+                          <div className={styles.detailLine}>
+                            Safety checked (Microsoft Content Safety)
+                            {contentSafetyFlag.metadata?.blocked
+                              ? " · Blocked"
+                              : ""}
+                          </div>
+                          {Object.keys(
+                            contentSafetyFlag.metadata?.categories ?? {}
+                          ).length > 0 ? (
+                            <div className={styles.safetyList}>
+                              {Object.entries(
+                                contentSafetyFlag.metadata?.categories ?? {}
+                              ).map(([category, severity]) => (
+                                <span
+                                  key={category}
+                                  className={styles.safetyPill}
+                                >
+                                  {category}: {severity}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        "Not evaluated by Content Safety"
+                      )}
                     </div>
                   </div>
                   <div className={styles.detailItem}>
@@ -845,6 +945,14 @@ function ContextSidebar({
                       <div className={styles.flagMeta}>
                         Message ID: {flag.messageId.slice(0, 12)}
                       </div>
+                      {flag.metadata?.source === "azure_content_safety" && (
+                        <div className={styles.flagMeta}>
+                          Content Safety ·{" "}
+                          {flag.metadata.blocked ? "Blocked" : "Passed"} ·{" "}
+                          {Object.keys(flag.metadata.categories ?? {}).length}{" "}
+                          categories scanned
+                        </div>
+                      )}
                     </div>
                   </li>
                 ))}

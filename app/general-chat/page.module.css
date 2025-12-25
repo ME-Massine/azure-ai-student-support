@@ -464,6 +464,11 @@
   opacity: 0.7;
 }
 
+.safetyFootBadge {
+  color: #7dd3fc;
+  font-weight: 600;
+}
+
 /* Details Panel Refinements */
 .detailsPanel {
   border-top: 1px solid var(--border);
@@ -514,6 +519,30 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--text);
+}
+
+.detailLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.safetyList {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.safetyPill {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.15);
+  border: 1px solid rgba(125, 211, 252, 0.4);
+  color: #bae6fd;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .detailActions {
