@@ -15,13 +15,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "messageId is required" }, { status: 400 });
   }
 
-  const message = findMessage(messageId);
+  const message = await findMessage(messageId);
   if (!message) {
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
   }
 
   const moderation = evaluateModeration(message);
-  const record = addModerationFlag(
+  const record = await addModerationFlag(
     {
       messageId,
       severity: moderation.severity,
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
   let systemMessage = null;
   if (moderation.actionTaken === "warning_posted") {
-    systemMessage = addMessage({
+    systemMessage = await addMessage({
       threadId: message.threadId,
       senderId: "system-moderation",
       senderRole: "ai",
@@ -49,6 +49,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     moderation: record,
     systemMessage,
-    thread: augmentThread(message.threadId),
+    thread: await augmentThread(message.threadId),
   });
 }

@@ -33,11 +33,11 @@ export async function POST(req: Request) {
     );
   }
 
-  let thread: ReturnType<typeof augmentThread>;
+  let thread: Awaited<ReturnType<typeof augmentThread>>;
   try {
     thread = threadId
-      ? augmentThread(threadId)
-      : getOrCreateThread(schoolId, user.userId);
+      ? await augmentThread(threadId)
+      : await getOrCreateThread(schoolId, user.userId);
   } catch (error) {
     console.error("Invalid thread reference", error);
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
   };
 
   if (safety.blocked) {
-    const systemMessage = addMessage({
+    const systemMessage = await addMessage({
       threadId: thread.threadId,
       senderId: "system-content-safety",
       senderRole: "ai",
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
       verifiedStatus: "unverified",
     });
 
-    const moderation = addModerationFlag({
+    const moderation = await addModerationFlag({
       messageId: systemMessage.messageId,
       severity: "high",
       reason: "Azure Content Safety blocked a student message.",
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
         blocked: true,
         moderation,
         systemMessage,
-        thread: augmentThread(thread.threadId),
+        thread: await augmentThread(thread.threadId),
       },
       { status: 200 }
     );
@@ -104,7 +104,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
-  const created = addMessage({
+  const created = await addMessage({
     threadId: thread.threadId,
     senderId: user.userId,
     senderRole: user.role === "senior" ? "senior" : "student",
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     verifiedStatus: "unverified",
   });
 
-  addModerationFlag({
+  await addModerationFlag({
     messageId: created.messageId,
     severity: "low",
     reason: "Azure Content Safety scan completed.",
@@ -125,6 +125,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     message: created,
-    thread: augmentThread(thread.threadId),
+    thread: await augmentThread(thread.threadId),
   });
 }

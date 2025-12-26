@@ -1,3 +1,5 @@
+import { Container } from "@azure/cosmos";
+import { database } from "@/lib/cosmos/client";
 import {
   AIVerification,
   AugmentedThread,
@@ -6,16 +8,15 @@ import {
   ModerationFlag,
   OfficialRule,
   User,
+  VerifiedStatus,
 } from "./models";
 
 interface GeneralChatStore {
   users: Record<string, User>;
-  threads: Record<string, ChatThread>;
-  messages: Record<string, ChatMessage>;
-  verifications: Record<string, AIVerification>;
-  moderation: Record<string, ModerationFlag>;
   rules: OfficialRule[];
 }
+
+type WithId<T> = T & { id: string };
 
 function seedRules(): OfficialRule[] {
   const now = new Date().toISOString();
@@ -62,10 +63,6 @@ function seedRules(): OfficialRule[] {
 function initStore(): GeneralChatStore {
   return {
     users: {},
-    threads: {},
-    messages: {},
-    verifications: {},
-    moderation: {},
     rules: seedRules(),
   };
 }
@@ -77,47 +74,123 @@ if (!(globalThis as any).__generalChatStore) {
 
 export const store: GeneralChatStore = globalStore;
 
+async function getContainer(id: string, partitionKey: string): Promise<Container> {
+  const { container } = await database.containers.createIfNotExists({
+    id,
+    partitionKey: { paths: [partitionKey] },
+  });
+  return container;
+}
+
+const threadsContainerPromise = getContainer("chatThreads", "/threadId");
+const messagesContainerPromise = getContainer("chatMessages", "/threadId");
+const verificationsContainerPromise = getContainer(
+  "chatVerifications",
+  "/messageId"
+);
+const moderationContainerPromise = getContainer("chatModeration", "/messageId");
+
+function stripCosmosFields<T>(item: WithId<T>): T {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { id: _id, ...rest } = item;
+  return rest;
+}
+
 export function upsertUser(user: User) {
   store.users[user.userId] = user;
   return store.users[user.userId];
 }
 
-export function getOrCreateThread(
+async function getThread(threadId: string): Promise<ChatThread | undefined> {
+  const container = await threadsContainerPromise;
+  try {
+    const { resource } = await container
+      .item(threadId, threadId)
+      .read<WithId<ChatThread>>();
+    if (!resource) return undefined;
+    return stripCosmosFields(resource);
+  } catch (error: any) {
+    if (error.code === 404) return undefined;
+    throw error;
+  }
+}
+
+async function updateMessageVerificationStatus(
+  threadId: string,
+  messageId: string,
+  verifiedStatus: VerifiedStatus
+) {
+  const container = await messagesContainerPromise;
+  const { resource } = await container
+    .item(messageId, threadId)
+    .read<WithId<ChatMessage>>();
+
+  if (!resource) return;
+
+  const next: WithId<ChatMessage> = {
+    ...resource,
+    verifiedStatus,
+  };
+
+  await container.item(messageId, threadId).replace(next);
+}
+
+export async function getOrCreateThread(
   schoolId: string,
   createdBy: string
-): AugmentedThread {
-  const existing = Object.values(store.threads).find(
-    (t) => t.schoolId === schoolId && t.isActive
-  );
+): Promise<AugmentedThread> {
+  const container = await threadsContainerPromise;
+
+  const { resources } = await container.items
+    .query<WithId<ChatThread>>({
+      query:
+        "SELECT * FROM c WHERE c.schoolId = @schoolId AND c.isActive = true ORDER BY c.createdAt DESC",
+      parameters: [{ name: "@schoolId", value: schoolId }],
+    })
+    .fetchAll();
+
+  const existing = resources[0];
 
   const thread =
     existing ||
     (() => {
       const threadId = crypto.randomUUID();
       const now = new Date().toISOString();
-      const newThread: ChatThread = {
+      const newThread: WithId<ChatThread> = {
+        id: threadId,
         threadId,
         schoolId,
         createdAt: now,
         createdBy,
         isActive: true,
       };
-      store.threads[threadId] = newThread;
       return newThread;
     })();
+
+  if (!existing) {
+    await container.items.create(thread);
+  }
 
   return augmentThread(thread.threadId);
 }
 
-export function augmentThread(threadId: string): AugmentedThread {
-  const thread = store.threads[threadId];
+export async function augmentThread(threadId: string): Promise<AugmentedThread> {
+  const thread = await getThread(threadId);
   if (!thread) {
     throw new Error("Thread not found");
   }
 
-  const messages = Object.values(store.messages)
-    .filter((m) => m.threadId === threadId)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const messagesContainer = await messagesContainerPromise;
+  const { resources: messageResources } = await messagesContainer.items
+    .query<WithId<ChatMessage>>({
+      query:
+        "SELECT * FROM c WHERE c.threadId = @threadId ORDER BY c.createdAt",
+      parameters: [{ name: "@threadId", value: threadId }],
+    })
+    .fetchAll();
+
+  const messages = messageResources.map(stripCosmosFields);
+  const messageIds = messages.map((m) => m.messageId);
 
   const users = Object.values(store.users).filter(
     (u) => u.schoolId === thread.schoolId
@@ -127,13 +200,8 @@ export function augmentThread(threadId: string): AugmentedThread {
     (rule) => rule.schoolId === thread.schoolId
   );
 
-  const verifications = Object.values(store.verifications).filter((v) =>
-    messages.some((m) => m.messageId === v.messageId)
-  );
-
-  const moderationFlags = Object.values(store.moderation).filter((flag) =>
-    messages.some((m) => m.messageId === flag.messageId)
-  );
+  const verifications = await listVerifications(messageIds);
+  const moderationFlags = await listModerationFlags(messageIds);
 
   return {
     ...thread,
@@ -145,51 +213,110 @@ export function augmentThread(threadId: string): AugmentedThread {
   };
 }
 
-export function addMessage(message: Omit<ChatMessage, "messageId">) {
+export async function addMessage(
+  message: Omit<ChatMessage, "messageId">
+): Promise<ChatMessage> {
   const messageId = crypto.randomUUID();
-  const next: ChatMessage = { ...message, messageId };
-  store.messages[messageId] = next;
-  return next;
+  const container = await messagesContainerPromise;
+
+  const next: WithId<ChatMessage> = {
+    ...message,
+    id: messageId,
+    messageId,
+  };
+
+  await container.items.create(next);
+  return stripCosmosFields(next);
 }
 
-export function findMessage(messageId: string) {
-  return store.messages[messageId];
+export async function findMessage(
+  messageId: string
+): Promise<ChatMessage | undefined> {
+  const container = await messagesContainerPromise;
+  const { resources } = await container.items
+    .query<WithId<ChatMessage>>({
+      query: "SELECT * FROM c WHERE c.messageId = @messageId",
+      parameters: [{ name: "@messageId", value: messageId }],
+    })
+    .fetchAll();
+
+  const found = resources[0];
+  return found ? stripCosmosFields(found) : undefined;
 }
 
-export function addVerification(
+export async function addVerification(
   verification: Omit<AIVerification, "verificationId">,
   verifiedStatus: ChatMessage["verifiedStatus"]
-) {
+): Promise<AIVerification> {
   const verificationId = crypto.randomUUID();
-  const record: AIVerification = { ...verification, verificationId };
-  store.verifications[verificationId] = record;
+  const container = await verificationsContainerPromise;
 
-  const message = store.messages[verification.messageId];
+  const record: WithId<AIVerification> = {
+    ...verification,
+    id: verificationId,
+    verificationId,
+  };
+
+  await container.items.create(record);
+
+  const message = await findMessage(verification.messageId);
   if (message) {
-    // Preserve original message text; verifiedStatus is derived metadata that can evolve.
-    store.messages[verification.messageId] = { ...message, verifiedStatus };
+    await updateMessageVerificationStatus(
+      message.threadId,
+      verification.messageId,
+      verifiedStatus
+    );
   }
 
-  return record;
+  return stripCosmosFields(record);
 }
 
-export function addModerationFlag(flag: Omit<ModerationFlag, "flagId">) {
+export async function addModerationFlag(
+  flag: Omit<ModerationFlag, "flagId">
+): Promise<ModerationFlag> {
   const flagId = crypto.randomUUID();
-  const record: ModerationFlag = { ...flag, flagId };
-  store.moderation[flagId] = record;
-  return record;
+  const container = await moderationContainerPromise;
+
+  const record: WithId<ModerationFlag> = {
+    ...flag,
+    id: flagId,
+    flagId,
+  };
+
+  await container.items.create(record);
+  return stripCosmosFields(record);
 }
 
-export function listVerifications(messageId: string) {
-  return Object.values(store.verifications).filter(
-    (v) => v.messageId === messageId
-  );
+export async function listVerifications(
+  messageIds: string[]
+): Promise<AIVerification[]> {
+  if (messageIds.length === 0) return [];
+
+  const container = await verificationsContainerPromise;
+  const { resources } = await container.items
+    .query<WithId<AIVerification>>({
+      query: "SELECT * FROM c WHERE ARRAY_CONTAINS(@messageIds, c.messageId)",
+      parameters: [{ name: "@messageIds", value: messageIds }],
+    })
+    .fetchAll();
+
+  return resources.map(stripCosmosFields);
 }
 
-export function listModerationFlags(messageId: string) {
-  return Object.values(store.moderation).filter(
-    (m) => m.messageId === messageId
-  );
+export async function listModerationFlags(
+  messageIds: string[]
+): Promise<ModerationFlag[]> {
+  if (messageIds.length === 0) return [];
+
+  const container = await moderationContainerPromise;
+  const { resources } = await container.items
+    .query<WithId<ModerationFlag>>({
+      query: "SELECT * FROM c WHERE ARRAY_CONTAINS(@messageIds, c.messageId)",
+      parameters: [{ name: "@messageIds", value: messageIds }],
+    })
+    .fetchAll();
+
+  return resources.map(stripCosmosFields);
 }
 
 export function getOfficialRules(schoolId: string, language: string) {
