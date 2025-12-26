@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   }
 
   upsertUser(user);
-  const thread = getOrCreateThread(schoolId, user.userId);
+  const thread = await getOrCreateThread(schoolId, user.userId);
 
   return NextResponse.json({ thread });
 }
@@ -32,7 +32,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const thread = augmentThread(threadId);
+    const thread = await augmentThread(threadId);
     return NextResponse.json({ thread });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 404 });

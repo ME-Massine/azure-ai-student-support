@@ -25,12 +25,12 @@ export async function POST(req: Request) {
     );
   }
 
-  const message = findMessage(messageId);
+  const message = await findMessage(messageId);
   if (!message) {
     return NextResponse.json({ error: "Message not found" }, { status: 404 });
   }
 
-  const thread = augmentThread(message.threadId);
+  const thread = await augmentThread(message.threadId);
   const rules = thread.officialRules;
 
   const verification = await verifyMessageAgainstRules(message, rules);
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
       ? "partially_verified"
       : "conflict";
 
-  const record = addVerification(verification, verifiedStatus);
+  const record = await addVerification(verification, verifiedStatus);
 
   const aiContent = `AI verification: ${record.verificationResult}\nReason: ${record.explanation}\nSources: ${record.officialSourceIds.join(", ")}`;
 
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   };
 
   if (safety.blocked) {
-    const systemMessage = addMessage({
+    const systemMessage = await addMessage({
       threadId: message.threadId,
       senderId: "system-content-safety",
       senderRole: "ai",
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       relatedMessageId: message.messageId,
     });
 
-    const moderation = addModerationFlag({
+    const moderation = await addModerationFlag({
       messageId: systemMessage.messageId,
       severity: "high",
       reason: "Azure Content Safety blocked an AI verification.",
@@ -81,11 +81,11 @@ export async function POST(req: Request) {
       verification: record,
       moderation,
       systemMessage,
-      thread: augmentThread(message.threadId),
+      thread: await augmentThread(message.threadId),
     });
   }
 
-  const aiMessage = addMessage({
+  const aiMessage = await addMessage({
     threadId: message.threadId,
     senderId: "ai-verifier",
     senderRole: "ai",
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     relatedMessageId: message.messageId,
   });
 
-  addModerationFlag({
+  await addModerationFlag({
     messageId: aiMessage.messageId,
     severity: "low",
     reason: "Azure Content Safety scan completed.",
@@ -108,6 +108,6 @@ export async function POST(req: Request) {
   return NextResponse.json({
     verification: record,
     aiMessage,
-    thread: augmentThread(message.threadId),
+    thread: await augmentThread(message.threadId),
   });
 }
