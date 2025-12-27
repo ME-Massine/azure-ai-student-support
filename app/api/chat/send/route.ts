@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   try {
     thread = threadId
       ? await augmentThread(threadId)
-      : await getOrCreateThread(schoolId, user.userId);
+      : await getOrCreateThread(schoolId, user.userId, user.acsUserId);
   } catch (error) {
     console.error("Invalid thread reference", error);
     return NextResponse.json({ error: "Thread not found" }, { status: 404 });
@@ -55,12 +55,18 @@ export async function POST(req: Request) {
   };
 
   if (safety.blocked) {
+    const systemAcsMessage = await sendAcsMessage({
+      threadId: thread.threadId,
+      content: "This message could not be posted due to school safety policy.",
+      senderAcsUserId: user.acsUserId,
+      senderDisplayName: "System",
+    });
+
     const systemMessage = await addMessage({
       threadId: thread.threadId,
       senderId: "system-content-safety",
       senderRole: "ai",
-      content: "This message could not be posted due to school safety policy.",
-      createdAt: safetyCheckedAt,
+      createdAt: systemAcsMessage.deliveredAt ?? safetyCheckedAt,
       messageType: "system_warning",
       verifiedStatus: "unverified",
     });
@@ -108,7 +114,6 @@ export async function POST(req: Request) {
     threadId: thread.threadId,
     senderId: user.userId,
     senderRole: user.role === "senior" ? "senior" : "student",
-    content: acsResult.content,
     createdAt: acsResult.deliveredAt,
     messageType: messageType ?? "student_answer",
     verifiedStatus: "unverified",

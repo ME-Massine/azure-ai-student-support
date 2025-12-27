@@ -1,18 +1,7 @@
-interface SendOptions {
-  threadId: string;
-  content: string;
-  senderAcsUserId: string;
-}
+import { parseConnectionString } from "@azure/communication-common";
+import { CommunicationIdentityClient } from "@azure/communication-identity";
 
-interface SimulatedChatMessageEnvelope {
-  id: string;
-  type: "text";
-  sequenceId: string;
-  version: string;
-  content: { message: string };
-  senderCommunicationIdentifier: { communicationUserId: string };
-  createdOn: string;
-}
+const CHAT_API_VERSION = "2024-10-15-preview";
 
 class AcsRestError extends Error {
   public statusCode: number;
@@ -26,54 +15,233 @@ class AcsRestError extends Error {
   }
 }
 
-function requireField(value: string | undefined, fieldName: string) {
-  if (!value || !value.trim()) {
-    throw new AcsRestError(`${fieldName} is required for ACS transport.`);
+type Participant = {
+  id: { communicationUserId: string };
+  displayName?: string;
+  shareHistoryTime?: string;
+};
+
+type AcsMessage = {
+  id: string;
+  type: string;
+  content?: { message?: string };
+  senderCommunicationIdentifier?: { communicationUserId?: string };
+  createdOn?: string;
+};
+
+type SendOptions = {
+  threadId: string;
+  content: string;
+  senderAcsUserId: string;
+  senderDisplayName?: string;
+};
+
+let parsedConnection:
+  | { endpoint: string; identityClient: CommunicationIdentityClient }
+  | null = null;
+
+function getConnection() {
+  if (parsedConnection) return parsedConnection;
+
+  const connectionString = process.env.ACS_CONNECTION_STRING;
+  if (!connectionString) {
+    throw new AcsRestError("ACS connection string not configured.", 503);
   }
 
-  if (value.length > 8000) {
-    throw new AcsRestError(
-      `${fieldName} exceeds ACS message size limits.`,
-      413,
-      "RequestEntityTooLarge"
+  const { endpoint } = parseConnectionString(connectionString);
+  parsedConnection = {
+    endpoint: endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint,
+    identityClient: new CommunicationIdentityClient(connectionString),
+  };
+
+  return parsedConnection;
+}
+
+async function getUserToken(acsUserId: string) {
+  const { identityClient } = getConnection();
+  const { token } = await identityClient.getToken(
+    { communicationUserId: acsUserId },
+    ["chat"]
+  );
+  return token;
+}
+
+class ChatThreadClient {
+  constructor(
+    private readonly endpoint: string,
+    private readonly token: string,
+    private readonly threadId: string
+  ) {}
+
+  private async request<T>(path: string, init: RequestInit): Promise<T> {
+    const url = `${this.endpoint}${path}${
+      path.includes("?") ? "&" : "?"
+    }api-version=${CHAT_API_VERSION}`;
+
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+        ...(init.headers || {}),
+      },
+    });
+
+    if (!res.ok) {
+      const details = await res.text();
+      throw new AcsRestError(
+        `ACS request failed: ${res.status} ${res.statusText} ${details}`,
+        res.status
+      );
+    }
+
+    if (res.status === 204) {
+      // @ts-expect-error - no body for 204
+      return undefined;
+    }
+
+    return (await res.json()) as T;
+  }
+
+  async sendMessage(content: string, displayName?: string) {
+    const body = {
+      content: content.trim(),
+      type: "text",
+      senderDisplayName: displayName,
+    };
+
+    const response = await this.request<{ id: string }>(
+      `/chat/threads/${this.threadId}/messages`,
+      { method: "POST", body: JSON.stringify(body) }
     );
+
+    return response.id;
+  }
+
+  async getMessage(messageId: string) {
+    return this.request<AcsMessage>(
+      `/chat/threads/${this.threadId}/messages/${messageId}`,
+      { method: "GET" }
+    );
+  }
+
+  async listMessages() {
+    const response = await this.request<{ value: AcsMessage[] }>(
+      `/chat/threads/${this.threadId}/messages?maxPageSize=50`,
+      { method: "GET" }
+    );
+    return response.value;
   }
 }
 
-function validateThreadId(threadId: string) {
-  const uuidPattern =
-    /^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$/;
+class ChatClient {
+  constructor(
+    private readonly endpoint: string,
+    private readonly token: string
+  ) {}
 
-  if (!uuidPattern.test(threadId)) {
-    throw new AcsRestError(
-      "Invalid ACS threadId format.",
-      400,
-      "InvalidArgument"
-    );
+  private async request<T>(path: string, init: RequestInit): Promise<T> {
+    const url = `${this.endpoint}${path}${
+      path.includes("?") ? "&" : "?"
+    }api-version=${CHAT_API_VERSION}`;
+
+    const res = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.token}`,
+        ...(init.headers || {}),
+      },
+    });
+
+    if (!res.ok) {
+      const details = await res.text();
+      throw new AcsRestError(
+        `ACS request failed: ${res.status} ${res.statusText} ${details}`,
+        res.status
+      );
+    }
+
+    if (res.status === 204) {
+      // @ts-expect-error - no body for 204
+      return undefined;
+    }
+
+    return (await res.json()) as T;
   }
+
+  async createChatThread(topic: string, participants: Participant[]) {
+    const body = {
+      topic,
+      participants,
+      idempotencyToken: crypto.randomUUID(),
+    };
+
+    const response = await this.request<{
+      chatThread?: { id?: string };
+      id?: string;
+      chatThreadId?: string;
+    }>(
+      "/chat/threads",
+      { method: "POST", body: JSON.stringify(body) }
+    );
+
+    const threadId =
+      response.chatThread?.id || response.id || response.chatThreadId;
+    if (!threadId) {
+      throw new AcsRestError("ACS did not return a thread id.", 502);
+    }
+
+    return threadId;
+  }
+
+  getChatThreadClient(threadId: string) {
+    return new ChatThreadClient(this.endpoint, this.token, threadId);
+  }
+}
+
+async function getChatClientForUser(acsUserId: string) {
+  const { endpoint } = getConnection();
+  const token = await getUserToken(acsUserId);
+  return new ChatClient(endpoint, token);
+}
+
+export async function createAcsChatThread(options: {
+  topic: string;
+  creatorAcsUserId: string;
+  participants?: Participant[];
+}) {
+  const participants: Participant[] = [
+    {
+      id: { communicationUserId: options.creatorAcsUserId },
+      displayName: "Thread Owner",
+      shareHistoryTime: new Date().toISOString(),
+    },
+    ...(options.participants ?? []),
+  ];
+
+  const client = await getChatClientForUser(options.creatorAcsUserId);
+  const threadId = await client.createChatThread(options.topic, participants);
+  return threadId;
 }
 
 export async function sendAcsMessage(options: SendOptions) {
-  requireField(options.threadId, "threadId");
-  requireField(options.content, "content");
-  requireField(options.senderAcsUserId, "senderAcsUserId");
-  validateThreadId(options.threadId);
+  if (!options.threadId || !options.content || !options.senderAcsUserId) {
+    throw new AcsRestError("threadId, content, and senderAcsUserId are required.");
+  }
 
-  const deliveredAt = new Date().toISOString();
-  const messageId = crypto.randomUUID();
-  const ACS_MODE = "simulated" as const;
+  const client = await getChatClientForUser(options.senderAcsUserId);
+  const threadClient = client.getChatThreadClient(options.threadId);
 
-  const envelope: SimulatedChatMessageEnvelope = {
-    id: messageId,
-    type: "text",
-    sequenceId: Date.now().toString(),
-    version: "0",
-    content: { message: options.content.trim() },
-    senderCommunicationIdentifier: {
-      communicationUserId: options.senderAcsUserId,
-    },
-    createdOn: deliveredAt,
-  };
+  const messageId = await threadClient.sendMessage(
+    options.content,
+    options.senderDisplayName
+  );
+  const envelope = await threadClient.getMessage(messageId);
+
+  const deliveredAt =
+    envelope.createdOn ?? new Date().toISOString();
+
   return {
     acsMessageId: messageId,
     deliveredAt,
@@ -81,6 +249,29 @@ export async function sendAcsMessage(options: SendOptions) {
     senderAcsUserId: options.senderAcsUserId,
     content: options.content.trim(),
     envelope,
-    mode: ACS_MODE,
+    mode: "chatClient" as const,
   };
+}
+
+export async function listAcsMessages(threadId: string, acsUserId: string) {
+  if (!threadId || !acsUserId) {
+    throw new AcsRestError("threadId and acsUserId are required to list messages.");
+  }
+
+  const client = await getChatClientForUser(acsUserId);
+  const threadClient = client.getChatThreadClient(threadId);
+  return threadClient.listMessages();
+}
+
+export async function getAcsMessage(
+  threadId: string,
+  messageId: string,
+  acsUserId: string
+) {
+  if (!threadId || !messageId || !acsUserId) {
+    throw new AcsRestError("threadId, messageId, and acsUserId are required.");
+  }
+  const client = await getChatClientForUser(acsUserId);
+  const threadClient = client.getChatThreadClient(threadId);
+  return threadClient.getMessage(messageId);
 }

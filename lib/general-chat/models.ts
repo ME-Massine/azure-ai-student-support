@@ -35,7 +35,18 @@ export interface ChatMessage {
   threadId: string;
   senderId: string;
   senderRole: SenderRole;
+  createdAt: string;
+  messageType: MessageType;
+  verifiedStatus: VerifiedStatus;
   content: string;
+  relatedMessageId?: string;
+}
+
+export interface ChatMessageMetadata {
+  messageId: string;
+  threadId: string;
+  senderId: string;
+  senderRole: SenderRole;
   createdAt: string;
   messageType: MessageType;
   verifiedStatus: VerifiedStatus;

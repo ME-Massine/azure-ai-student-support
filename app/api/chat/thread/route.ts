@@ -19,7 +19,7 @@ export async function POST(req: Request) {
   }
 
   upsertUser(user);
-  const thread = await getOrCreateThread(schoolId, user.userId);
+  const thread = await getOrCreateThread(schoolId, user.userId, user.acsUserId);
 
   return NextResponse.json({ thread });
 }
