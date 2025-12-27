@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { addMessage, addModerationFlag, augmentThread, findMessage } from "@/lib/general-chat/store";
+import { sendAcsMessage } from "@/lib/general-chat/acs";
+import {
+  addMessage,
+  addModerationFlag,
+  augmentThread,
+  findMessage,
+  store,
+} from "@/lib/general-chat/store";
 import { evaluateModeration } from "@/lib/general-chat/moderation";
 
 export async function POST(req: Request) {
@@ -33,13 +40,22 @@ export async function POST(req: Request) {
 
   let systemMessage = null;
   if (moderation.actionTaken === "warning_posted") {
+    const senderAcsUserId = store.users[message.senderId]?.acsUserId;
+    const systemAcsMessage =
+      senderAcsUserId &&
+      (await sendAcsMessage({
+        threadId: message.threadId,
+        content:
+          "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.",
+        senderAcsUserId,
+        senderDisplayName: "System",
+      }));
+
     systemMessage = await addMessage({
       threadId: message.threadId,
       senderId: "system-moderation",
       senderRole: "ai",
-      content:
-        "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.",
-      createdAt: record.createdAt,
+      createdAt: systemAcsMessage?.deliveredAt ?? record.createdAt,
       messageType: "system_warning",
       verifiedStatus: message.verifiedStatus,
       relatedMessageId: message.messageId,

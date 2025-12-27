@@ -4,12 +4,18 @@ import {
   AIVerification,
   AugmentedThread,
   ChatMessage,
+  ChatMessageMetadata,
   ChatThread,
   ModerationFlag,
   OfficialRule,
   User,
   VerifiedStatus,
 } from "./models";
+import {
+  createAcsChatThread,
+  getAcsMessage,
+  listAcsMessages,
+} from "./acs";
 
 interface GeneralChatStore {
   users: Record<string, User>;
@@ -123,11 +129,11 @@ async function updateMessageVerificationStatus(
   const container = await messagesContainerPromise;
   const { resource } = await container
     .item(messageId, threadId)
-    .read<WithId<ChatMessage>>();
+    .read<WithId<ChatMessageMetadata>>();
 
   if (!resource) return;
 
-  const next: WithId<ChatMessage> = {
+  const next: WithId<ChatMessageMetadata> = {
     ...resource,
     verifiedStatus,
   };
@@ -137,7 +143,8 @@ async function updateMessageVerificationStatus(
 
 export async function getOrCreateThread(
   schoolId: string,
-  createdBy: string
+  createdBy: string,
+  creatorAcsUserId?: string
 ): Promise<AugmentedThread> {
   const container = await threadsContainerPromise;
 
@@ -151,27 +158,32 @@ export async function getOrCreateThread(
 
   const existing = resources[0];
 
-  const thread =
-    existing ||
-    (() => {
-      const threadId = crypto.randomUUID();
-      const now = new Date().toISOString();
-      const newThread: WithId<ChatThread> = {
-        id: threadId,
-        threadId,
-        schoolId,
-        createdAt: now,
-        createdBy,
-        isActive: true,
-      };
-      return newThread;
-    })();
+  let threadRecord: WithId<ChatThread>;
 
-  if (!existing) {
-    await container.items.create(thread);
+  if (existing) {
+    threadRecord = existing;
+  } else {
+    const now = new Date().toISOString();
+    const threadId = creatorAcsUserId
+      ? await createAcsChatThread({
+          topic: `School chat for ${schoolId}`,
+          creatorAcsUserId,
+        })
+      : crypto.randomUUID();
+
+    threadRecord = {
+      id: threadId,
+      threadId,
+      schoolId,
+      createdAt: now,
+      createdBy,
+      isActive: true,
+    };
+
+    await container.items.create(threadRecord);
   }
 
-  return augmentThread(thread.threadId);
+  return augmentThread(threadRecord.threadId);
 }
 
 export async function augmentThread(threadId: string): Promise<AugmentedThread> {
@@ -182,15 +194,42 @@ export async function augmentThread(threadId: string): Promise<AugmentedThread> 
 
   const messagesContainer = await messagesContainerPromise;
   const { resources: messageResources } = await messagesContainer.items
-    .query<WithId<ChatMessage>>({
+    .query<WithId<ChatMessageMetadata>>({
       query:
         "SELECT * FROM c WHERE c.threadId = @threadId ORDER BY c.createdAt",
       parameters: [{ name: "@threadId", value: threadId }],
     })
     .fetchAll();
 
-  const messages = messageResources.map(stripCosmosFields);
-  const messageIds = messages.map((m) => m.messageId);
+  const metadata = messageResources.map(stripCosmosFields);
+  const messageIds = metadata.map((m) => m.messageId);
+
+  const acsReader =
+    store.users[thread.createdBy]?.acsUserId ||
+    Object.values(store.users).find((u) => u.schoolId === thread.schoolId)
+      ?.acsUserId;
+  let acsMessages: Awaited<ReturnType<typeof listAcsMessages>> = [];
+  if (acsReader) {
+    try {
+      acsMessages = await listAcsMessages(thread.threadId, acsReader);
+    } catch (error) {
+      console.error("Failed to load ACS messages for thread", error);
+    }
+  }
+  const acsMap = new Map(acsMessages.map((m) => [m.id, m]));
+
+  const messages: ChatMessage[] = metadata.map((meta) => {
+    const acs = acsMap.get(meta.messageId);
+    return {
+      ...meta,
+      content: acs?.content?.message ?? "",
+      senderId:
+        meta.senderId ||
+        acs?.senderCommunicationIdentifier?.communicationUserId ||
+        "unknown",
+      createdAt: acs?.createdOn ?? meta.createdAt,
+    };
+  });
 
   const users = Object.values(store.users).filter(
     (u) => u.schoolId === thread.schoolId
@@ -214,12 +253,12 @@ export async function augmentThread(threadId: string): Promise<AugmentedThread> 
 }
 
 export async function addMessage(
-  message: Omit<ChatMessage, "messageId">
-): Promise<ChatMessage> {
+  message: Omit<ChatMessageMetadata, "messageId">
+): Promise<ChatMessageMetadata> {
   const messageId = crypto.randomUUID();
   const container = await messagesContainerPromise;
 
-  const next: WithId<ChatMessage> = {
+  const next: WithId<ChatMessageMetadata> = {
     ...message,
     id: messageId,
     messageId,
@@ -234,14 +273,47 @@ export async function findMessage(
 ): Promise<ChatMessage | undefined> {
   const container = await messagesContainerPromise;
   const { resources } = await container.items
-    .query<WithId<ChatMessage>>({
+    .query<WithId<ChatMessageMetadata>>({
       query: "SELECT * FROM c WHERE c.messageId = @messageId",
       parameters: [{ name: "@messageId", value: messageId }],
     })
     .fetchAll();
 
   const found = resources[0];
-  return found ? stripCosmosFields(found) : undefined;
+  if (!found) return undefined;
+
+  const metadata = stripCosmosFields(found);
+  const thread = await getThread(metadata.threadId);
+  const acsReader =
+    (metadata.senderId && store.users[metadata.senderId]?.acsUserId) ||
+    (thread ? store.users[thread.createdBy]?.acsUserId : undefined) ||
+    (thread
+      ? Object.values(store.users).find((u) => u.schoolId === thread.schoolId)
+          ?.acsUserId
+      : undefined);
+
+  let envelope: Awaited<ReturnType<typeof getAcsMessage>> | undefined;
+  if (acsReader) {
+    try {
+      envelope = await getAcsMessage(
+        metadata.threadId,
+        metadata.messageId,
+        acsReader
+      );
+    } catch (error) {
+      console.error("Failed to fetch ACS message content", error);
+    }
+  }
+
+  return {
+    ...metadata,
+    content: envelope?.content?.message ?? "",
+    createdAt: envelope?.createdOn ?? metadata.createdAt,
+    senderId:
+      metadata.senderId ||
+      envelope?.senderCommunicationIdentifier?.communicationUserId ||
+      "unknown",
+  };
 }
 
 export async function addVerification(
