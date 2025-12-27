@@ -7,9 +7,11 @@ import {
   ChatMessageMetadata,
   ChatThread,
   ModerationFlag,
+  ModerationSeverity,
   OfficialRule,
   User,
   VerifiedStatus,
+  VerificationResult,
 } from "./models";
 import {
   createAcsChatThread,
@@ -389,6 +391,55 @@ export async function listModerationFlags(
     .fetchAll();
 
   return resources.map(stripCosmosFields);
+}
+
+export type ModerationFlagDetail = ModerationFlag & { message?: ChatMessage };
+export type VerificationDetail = AIVerification & { message?: ChatMessage };
+
+export async function listModerationFlagsBySeverity(
+  severity: ModerationSeverity
+): Promise<ModerationFlagDetail[]> {
+  const container = await moderationContainerPromise;
+  const { resources } = await container.items
+    .query<WithId<ModerationFlag>>({
+      query:
+        "SELECT * FROM c WHERE c.severity = @severity ORDER BY c.createdAt DESC",
+      parameters: [{ name: "@severity", value: severity }],
+    })
+    .fetchAll();
+
+  const flags = resources.map(stripCosmosFields);
+  const messages = await Promise.all(
+    flags.map((flag) => findMessage(flag.messageId))
+  );
+
+  return flags.map((flag, index) => ({
+    ...flag,
+    message: messages[index],
+  }));
+}
+
+export async function listVerificationsByResult(
+  verificationResult: VerificationResult
+): Promise<VerificationDetail[]> {
+  const container = await verificationsContainerPromise;
+  const { resources } = await container.items
+    .query<WithId<AIVerification>>({
+      query:
+        "SELECT * FROM c WHERE c.verificationResult = @verificationResult ORDER BY c.createdAt DESC",
+      parameters: [{ name: "@verificationResult", value: verificationResult }],
+    })
+    .fetchAll();
+
+  const verifications = resources.map(stripCosmosFields);
+  const messages = await Promise.all(
+    verifications.map((verification) => findMessage(verification.messageId))
+  );
+
+  return verifications.map((verification, index) => ({
+    ...verification,
+    message: messages[index],
+  }));
 }
 
 export function getOfficialRules(schoolId: string, language: string) {
