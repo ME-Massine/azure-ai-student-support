@@ -58,13 +58,44 @@ export type VerificationResult =
   | "partially_correct"
   | "incorrect";
 
-export interface AIVerification {
+export type VerificationVerdict = VerificationResult | "unverified";
+export type VerificationFailureReason = "ai_unavailable";
+
+export interface SuccessfulAIVerification {
   verificationId: string;
   messageId: string;
   verificationResult: VerificationResult;
+  verdict: VerificationResult;
   explanation: string;
   officialSourceIds: string[];
   createdAt: string;
+}
+
+export interface UnverifiedAIVerification {
+  verificationId: string;
+  messageId: string;
+  verdict: "unverified";
+  reason: VerificationFailureReason;
+  requiresHumanReview: true;
+  createdAt: string;
+}
+
+export type AIVerification =
+  | SuccessfulAIVerification
+  | UnverifiedAIVerification;
+
+export type NewAIVerification = Omit<AIVerification, "verificationId">;
+
+export function isSuccessfulVerification(
+  verification: AIVerification | NewAIVerification
+): verification is
+  | SuccessfulAIVerification
+  | (NewAIVerification & { verificationResult: VerificationResult; verdict: VerificationResult }) {
+  return (
+    "verificationResult" in verification &&
+    verification.verificationResult !== undefined &&
+    verification.verdict !== "unverified"
+  );
 }
 
 export type ModerationSeverity = "low" | "medium" | "high";

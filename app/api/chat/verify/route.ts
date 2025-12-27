@@ -9,6 +9,7 @@ import {
   addModerationFlag,
 } from "@/lib/general-chat/store";
 import { analyzeTextSafety } from "@/lib/content-safety/client";
+import { isSuccessfulVerification } from "@/lib/general-chat/models";
 
 export async function POST(req: Request) {
   let body: any;
@@ -36,6 +37,15 @@ export async function POST(req: Request) {
 
   const verification = await verifyMessageAgainstRules(message, rules);
 
+  if (!isSuccessfulVerification(verification)) {
+    const record = await addVerification(verification);
+
+    return NextResponse.json({
+      verification: record,
+      thread: await augmentThread(message.threadId),
+    });
+  }
+
   const verifiedStatus =
     verification.verificationResult === "confirmed"
       ? "verified"
@@ -44,6 +54,13 @@ export async function POST(req: Request) {
       : "conflict";
 
   const record = await addVerification(verification, verifiedStatus);
+
+  if (!isSuccessfulVerification(record)) {
+    return NextResponse.json(
+      { error: "Verification record incomplete" },
+      { status: 500 }
+    );
+  }
 
   const aiContent = `AI verification: ${record.verificationResult}\nReason: ${record.explanation}\nSources: ${record.officialSourceIds.join(", ")}`;
   const senderUser =

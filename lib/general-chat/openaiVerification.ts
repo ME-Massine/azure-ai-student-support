@@ -1,7 +1,7 @@
 import {
-  AIVerification,
   ChatMessage,
   OfficialRule,
+  NewAIVerification,
   VerificationResult,
 } from "./models";
 
@@ -25,20 +25,23 @@ function composePrompt(message: ChatMessage, rules: OfficialRule[]) {
 }
 
 function parseVerificationResponse(content: string) {
-  let parsed: any;
+  let parsed: Record<string, unknown>;
 
   try {
-    parsed = JSON.parse(content);
-  } catch (error) {
+    parsed = JSON.parse(content) as Record<string, unknown>;
+  } catch {
     throw new Error("Failed to parse Azure OpenAI verification response");
   }
 
-  const isValidResult =
-    parsed?.verificationResult === "confirmed" ||
-    parsed?.verificationResult === "partially_correct" ||
-    parsed?.verificationResult === "incorrect";
+  const verificationResult = parsed?.verificationResult;
+  const explanation = parsed?.explanation;
 
-  if (!isValidResult || typeof parsed?.explanation !== "string") {
+  const isValidResult =
+    verificationResult === "confirmed" ||
+    verificationResult === "partially_correct" ||
+    verificationResult === "incorrect";
+
+  if (!isValidResult || typeof explanation !== "string") {
     throw new Error("Azure OpenAI verification response missing required fields");
   }
 
@@ -47,8 +50,8 @@ function parseVerificationResponse(content: string) {
     : [];
 
   return {
-    verificationResult: parsed.verificationResult as VerificationResult,
-    explanation: parsed.explanation as string,
+    verificationResult: verificationResult as VerificationResult,
+    explanation,
     officialSourceIds,
   };
 }
@@ -56,7 +59,7 @@ function parseVerificationResponse(content: string) {
 async function callAzureVerification(
   message: ChatMessage,
   rules: OfficialRule[]
-): Promise<Omit<AIVerification, "verificationId">> {
+): Promise<NewAIVerification> {
   const { AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION } =
     process.env;
   const endpointRaw = process.env.AZURE_OPENAI_ENDPOINT;
@@ -104,6 +107,7 @@ async function callAzureVerification(
 
   return {
     messageId: message.messageId,
+    verdict: parsed.verificationResult,
     verificationResult: parsed.verificationResult,
     explanation: parsed.explanation,
     officialSourceIds: parsed.officialSourceIds,
@@ -111,34 +115,20 @@ async function callAzureVerification(
   };
 }
 
-function fallbackVerification(
-  message: ChatMessage,
-  rules: OfficialRule[]
-): Omit<AIVerification, "verificationId"> {
-  const matchedRule = rules.find((rule) =>
-    message.content.toLowerCase().includes(rule.title.toLowerCase().split(" ")[0])
-  );
-
-  const result: VerificationResult = matchedRule ? "confirmed" : "partially_correct";
-
-  return {
-    messageId: message.messageId,
-    verificationResult: result,
-    explanation: matchedRule
-      ? `Matches guidance from ${matchedRule.title}.`
-      : "Could not find a direct match; treat as partially verified until a moderator reviews.",
-    officialSourceIds: matchedRule ? [matchedRule.ruleId] : rules.map((r) => r.ruleId),
-    createdAt: new Date().toISOString(),
-  };
-}
-
 export async function verifyMessageAgainstRules(
   message: ChatMessage,
   rules: OfficialRule[]
-): Promise<Omit<AIVerification, "verificationId">> {
+): Promise<NewAIVerification> {
   try {
     return await callAzureVerification(message, rules);
-  } catch {
-    return fallbackVerification(message, rules);
+  } catch (error) {
+    console.error("Azure OpenAI verification unavailable", error);
+    return {
+      messageId: message.messageId,
+      verdict: "unverified",
+      reason: "ai_unavailable",
+      requiresHumanReview: true,
+      createdAt: new Date().toISOString(),
+    };
   }
 }
