@@ -8,6 +8,7 @@ import {
   ChatMessage,
   ModerationFlag,
   User,
+  isSuccessfulVerification,
 } from "@/lib/general-chat/models";
 
 const demoUser: User = {
@@ -26,6 +27,7 @@ type AggregateRiskLevel =
   | "informational"
   | "attention_required"
   | "escalation_required";
+type VerificationDisplay = { text: string; isVerified: boolean };
 
 function contentSafetySignal(metadata?: ModerationFlag["metadata"]) {
   if (!metadata || metadata.source !== "azure_content_safety") {
@@ -373,6 +375,11 @@ export default function GeneralChatPage() {
         return;
       }
 
+      if (data.verification?.verdict === "unverified") {
+        setStatus("AI verification unavailable. Requires human review.");
+        return;
+      }
+
       setStatus("AI verification completed.");
     } catch (error) {
       console.error("Verification request failed", error);
@@ -381,17 +388,32 @@ export default function GeneralChatPage() {
   }
 
   const verificationsByMessage = useMemo(() => {
-    const lookup: Record<string, string> = {};
+    const lookup: Record<string, VerificationDisplay | undefined> = {};
     thread?.verifications.forEach((v) => {
-      lookup[v.messageId] = v.verificationResult;
+      if (isSuccessfulVerification(v)) {
+        lookup[v.messageId] = {
+          text: v.verificationResult,
+          isVerified: true,
+        };
+        return;
+      }
+
+      if (v.verdict === "unverified" && v.reason === "ai_unavailable") {
+        lookup[v.messageId] = {
+          text: "Unverified (AI unavailable)",
+          isVerified: false,
+        };
+      }
     });
     return lookup;
   }, [thread]);
 
   const officialSourcesByMessage = useMemo(() => {
-    const lookup: Record<string, string[]> = {};
+    const lookup: Record<string, string[] | undefined> = {};
     thread?.verifications.forEach((v) => {
-      lookup[v.messageId] = v.officialSourceIds;
+      if (isSuccessfulVerification(v)) {
+        lookup[v.messageId] = v.officialSourceIds;
+      }
     });
     return lookup;
   }, [thread]);
@@ -615,9 +637,9 @@ type ChatTimelineProps = {
   selectedMessageId: string | null;
   onToggleDetails: (messageId: string) => void;
   onSelectMessage: (messageId: string) => void;
-  verificationsByMessage: Record<string, string>;
+  verificationsByMessage: Record<string, VerificationDisplay | undefined>;
   moderationByMessage: Record<string, ModerationFlag[]>;
-  officialSourcesByMessage: Record<string, string[]>;
+  officialSourcesByMessage: Record<string, string[] | undefined>;
   onVerify: (message: ChatMessage) => void;
   currentUserId: string;
   messageRiskById: Record<string, MessageRiskLevel>;
@@ -742,7 +764,7 @@ function ChatTimeline({
               >
                 {message.senderRole === "student" ? "Human" : "AI"}
               </span>
-              {verification && (
+              {verification?.isVerified && (
                 <span className={styles.footBadge}>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                     <path
@@ -792,7 +814,7 @@ function ChatTimeline({
                       Verification Status
                     </div>
                     <div className={styles.detailBody}>
-                      {verification || "Not yet requested"}
+                      {verification?.text || "Not yet requested"}
                     </div>
                   </div>
                   <div className={styles.detailItem}>
@@ -987,8 +1009,8 @@ type ContextSidebarProps = {
   disableDataTabs: boolean;
   selectedMessage?: ChatMessage;
   moderationFlags: ModerationFlag[];
-  verificationsByMessage: Record<string, string>;
-  officialSourcesByMessage: Record<string, string[]>;
+  verificationsByMessage: Record<string, VerificationDisplay | undefined>;
+  officialSourcesByMessage: Record<string, string[] | undefined>;
   officialRules: AugmentedThread["officialRules"];
 };
 
@@ -1004,7 +1026,7 @@ function ContextSidebar({
 }: ContextSidebarProps) {
   const verificationText =
     selectedMessage?.messageId &&
-    verificationsByMessage[selectedMessage.messageId];
+    verificationsByMessage[selectedMessage.messageId]?.text;
   const verificationSources =
     selectedMessage?.messageId &&
     officialSourcesByMessage[selectedMessage.messageId]?.length

@@ -12,6 +12,8 @@ import {
   User,
   VerifiedStatus,
   VerificationResult,
+  NewAIVerification,
+  isSuccessfulVerification,
 } from "./models";
 import {
   createAcsChatThread,
@@ -319,8 +321,8 @@ export async function findMessage(
 }
 
 export async function addVerification(
-  verification: Omit<AIVerification, "verificationId">,
-  verifiedStatus: ChatMessage["verifiedStatus"]
+  verification: NewAIVerification,
+  verifiedStatus?: ChatMessage["verifiedStatus"]
 ): Promise<AIVerification> {
   const verificationId = crypto.randomUUID();
   const container = await verificationsContainerPromise;
@@ -333,13 +335,15 @@ export async function addVerification(
 
   await container.items.create(record);
 
-  const message = await findMessage(verification.messageId);
-  if (message) {
-    await updateMessageVerificationStatus(
-      message.threadId,
-      verification.messageId,
-      verifiedStatus
-    );
+  if (verifiedStatus && isSuccessfulVerification(verification)) {
+    const message = await findMessage(verification.messageId);
+    if (message) {
+      await updateMessageVerificationStatus(
+        message.threadId,
+        verification.messageId,
+        verifiedStatus
+      );
+    }
   }
 
   return stripCosmosFields(record);
