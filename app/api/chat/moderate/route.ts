@@ -28,36 +28,50 @@ export async function POST(req: Request) {
   }
 
   const moderation = evaluateModeration(message);
-  const record = await addModerationFlag(
-    {
-      messageId,
-      severity: moderation.severity,
-      reason: moderation.reason,
-      createdAt: new Date().toISOString(),
-      actionTaken: moderation.actionTaken,
-    }
-  );
 
-  let systemMessage = null;
+  const record = await addModerationFlag({
+    messageId,
+    severity: moderation.severity,
+    reason: moderation.reason,
+    createdAt: new Date().toISOString(),
+    actionTaken: moderation.actionTaken,
+  });
+
+  let systemMessage: any = null;
+
   if (moderation.actionTaken === "warning_posted") {
-    const senderAcsUserId = store.users[message.senderId]?.acsUserId;
-    const systemAcsMessage = senderAcsUserId
-      ? await sendAcsMessage({
+    const systemText =
+      "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.";
+
+    // Try to post via ACS (optional)
+    const senderAcsUserId =
+      store.users[message.senderId]?.acsUserId ||
+      store.users[(await augmentThread(message.threadId)).createdBy]?.acsUserId;
+
+    let deliveredAt = record.createdAt;
+    try {
+      if (senderAcsUserId) {
+        const systemAcsMessage = await sendAcsMessage({
           threadId: message.threadId,
-          content:
-            "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.",
+          content: systemText,
           senderAcsUserId,
           senderDisplayName: "System",
-        })
-      : null;
+        });
+        deliveredAt = systemAcsMessage?.deliveredAt ?? deliveredAt;
+      }
+    } catch (e) {
+      console.error("ACS moderation warning send failed", e);
+    }
 
+    // Persist system warning in Cosmos (must include content)
     systemMessage = await addMessage({
       threadId: message.threadId,
       senderId: "system-moderation",
       senderRole: "ai",
-      createdAt: systemAcsMessage?.deliveredAt ?? record.createdAt,
+      content: systemText,
+      createdAt: deliveredAt,
       messageType: "system_warning",
-      verifiedStatus: message.verifiedStatus,
+      verifiedStatus: "unverified",
       relatedMessageId: message.messageId,
     });
   }

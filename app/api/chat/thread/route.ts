@@ -18,10 +18,17 @@ export async function POST(req: Request) {
     );
   }
 
-  upsertUser(user);
-  const thread = await getOrCreateThread(schoolId, user.userId, user.acsUserId);
-
-  return NextResponse.json({ thread });
+  try {
+    upsertUser(user);
+    const thread = await getOrCreateThread(schoolId, user.userId, user.acsUserId);
+    return NextResponse.json({ thread });
+  } catch (error: any) {
+    console.error("Failed to get or create thread", error);
+    return NextResponse.json(
+      { error: error?.message || "Failed to create thread" },
+      { status: 500 }
+    );
+  }
 }
 
 export async function GET(req: Request) {

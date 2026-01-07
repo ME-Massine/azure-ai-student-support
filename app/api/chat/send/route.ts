@@ -46,15 +46,15 @@ export async function POST(req: Request) {
   upsertUser(user);
 
   const safetyCheckedAt = new Date().toISOString();
+
   let safety: { blocked: boolean; categories: Record<string, number> };
   try {
     safety = await analyzeTextSafety(content);
   } catch (error) {
     console.error("Content Safety check failed", error);
-    // If Content Safety is not configured or fails, allow the message to proceed
     safety = { blocked: false, categories: {} };
   }
-  
+
   const safetyMetadata = {
     source: "azure_content_safety",
     categories: safety.categories,
@@ -63,18 +63,28 @@ export async function POST(req: Request) {
   };
 
   if (safety.blocked) {
-    const systemAcsMessage = await sendAcsMessage({
-      threadId: thread.threadId,
-      content: "This message could not be posted due to school safety policy.",
-      senderAcsUserId: user.acsUserId,
-      senderDisplayName: "System",
-    });
+    const systemText =
+      "This message could not be posted due to school safety policy.";
 
+    // Optional transport notice to the chat thread (ACS)
+    try {
+      await sendAcsMessage({
+        threadId: thread.threadId,
+        content: systemText,
+        senderAcsUserId: user.acsUserId,
+        senderDisplayName: "System",
+      });
+    } catch (e) {
+      console.error("ACS system warning send failed", e);
+    }
+
+    // Persist system warning to Cosmos as a ChatMessage with content
     const systemMessage = await addMessage({
       threadId: thread.threadId,
       senderId: "system-content-safety",
       senderRole: "ai",
-      createdAt: systemAcsMessage.deliveredAt ?? safetyCheckedAt,
+      content: systemText,
+      createdAt: safetyCheckedAt,
       messageType: "system_warning",
       verifiedStatus: "unverified",
     });
@@ -99,9 +109,9 @@ export async function POST(req: Request) {
     );
   }
 
-  let acsResult: Awaited<ReturnType<typeof sendAcsMessage>>;
+  // Send through ACS (transport)
   try {
-    acsResult = await sendAcsMessage({
+    await sendAcsMessage({
       threadId: thread.threadId,
       content,
       senderAcsUserId: user.acsUserId,
@@ -118,11 +128,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status });
   }
 
+  // Persist full message to Cosmos (source of truth for UI)
   const created = await addMessage({
     threadId: thread.threadId,
     senderId: user.userId,
     senderRole: user.role === "senior" ? "senior" : "student",
-    createdAt: acsResult.deliveredAt,
+    content, // critical
+    createdAt: new Date().toISOString(),
     messageType: messageType ?? "student_answer",
     verifiedStatus: "unverified",
   });

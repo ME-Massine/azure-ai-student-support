@@ -201,16 +201,29 @@ export default function GeneralChatPage() {
       });
 
       if (!res.ok) {
-        setStatus("Unable to start chat session.");
+        let errorMessage = "Unable to start chat session.";
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData?.error || errorMessage;
+        } catch {
+          // Response might not be JSON
+        }
+        setStatus(errorMessage);
         return;
       }
 
       const data = await res.json();
+      if (!data || !data.thread) {
+        setStatus("Invalid response from server.");
+        return;
+      }
+
       setThread(data.thread);
     } catch (error) {
       console.error("Failed to bootstrap chat thread", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
       setStatus(
-        "Unable to start chat. Please check your connection and retry."
+        `Unable to start chat: ${errorMessage}. Please check your connection and retry.`
       );
     }
   }
@@ -220,7 +233,7 @@ export default function GeneralChatPage() {
   }, []);
  
   useEffect(() => {
-    if (thread?.messages.length && !selectedMessageId) {
+    if (thread?.messages && thread.messages.length > 0 && !selectedMessageId) {
       setSelectedMessageId(
         thread.messages[thread.messages.length - 1].messageId
       );
@@ -387,7 +400,11 @@ export default function GeneralChatPage() {
       }
 
       if (data.verification?.verdict === "unverified") {
-        setStatus("AI verification unavailable. Requires human review.");
+        const errorMsg = data.verification?.errorDetails 
+          ? `AI verification unavailable: ${data.verification.errorDetails}`
+          : "AI verification unavailable. Requires human review.";
+        setStatus(errorMsg);
+        console.error("Verification failed:", data.verification);
         return;
       }
 
@@ -400,32 +417,38 @@ export default function GeneralChatPage() {
 
   const verificationsByMessage = useMemo(() => {
     const lookup: Record<string, VerificationDisplay | undefined> = {};
-    thread?.verifications.forEach((v) => {
-      if (isSuccessfulVerification(v)) {
-        lookup[v.messageId] = {
-          text: v.verificationResult,
-          isVerified: true,
-        };
-        return;
-      }
+    if (thread?.verifications) {
+      thread.verifications.forEach((v) => {
+        if (isSuccessfulVerification(v)) {
+          lookup[v.messageId] = {
+            text: v.verificationResult,
+            isVerified: true,
+          };
+          return;
+        }
 
-      if (v.verdict === "unverified" && v.reason === "ai_unavailable") {
-        lookup[v.messageId] = {
-          text: "Unverified (AI unavailable)",
-          isVerified: false,
-        };
-      }
-    });
+        if (v.verdict === "unverified" && v.reason === "ai_unavailable") {
+          lookup[v.messageId] = {
+            text: v.errorDetails 
+              ? `Unverified: ${v.errorDetails}` 
+              : "Unverified (AI unavailable)",
+            isVerified: false,
+          };
+        }
+      });
+    }
     return lookup;
   }, [thread]);
 
   const officialSourcesByMessage = useMemo(() => {
     const lookup: Record<string, string[] | undefined> = {};
-    thread?.verifications.forEach((v) => {
-      if (isSuccessfulVerification(v)) {
-        lookup[v.messageId] = v.officialSourceIds;
-      }
-    });
+    if (thread?.verifications) {
+      thread.verifications.forEach((v) => {
+        if (isSuccessfulVerification(v)) {
+          lookup[v.messageId] = v.officialSourceIds;
+        }
+      });
+    }
     return lookup;
   }, [thread]);
 
@@ -438,7 +461,7 @@ export default function GeneralChatPage() {
   }
 
   const selectedMessage = useMemo(() => {
-    if (!thread?.messages.length) return undefined;
+    if (!thread?.messages || thread.messages.length === 0) return undefined;
     if (selectedMessageId) {
       return (
         thread.messages.find((m) => m.messageId === selectedMessageId) ||

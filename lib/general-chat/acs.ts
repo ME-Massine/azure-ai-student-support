@@ -3,6 +3,10 @@ import { CommunicationIdentityClient } from "@azure/communication-identity";
 
 const CHAT_API_VERSION = "2024-10-15-preview";
 
+/* =========================
+   Errors
+========================= */
+
 class AcsRestError extends Error {
   public statusCode: number;
   public code: string;
@@ -15,13 +19,17 @@ class AcsRestError extends Error {
   }
 }
 
+/* =========================
+   Types
+========================= */
+
 type Participant = {
   id: { communicationUserId: string };
   displayName?: string;
   shareHistoryTime?: string;
 };
 
-type AcsMessage = {
+export type AcsMessage = {
   id: string;
   type: string;
   content?: { message?: string };
@@ -36,12 +44,12 @@ type SendOptions = {
   senderDisplayName?: string;
 };
 
-// -------------------------
-// Configuration helpers
-// -------------------------
+/* =========================
+   Configuration
+========================= */
 
-function isAcsConfigured() {
-  return Boolean(process.env.ACS_CONNECTION_STRING);
+function isAcsConfigured(): boolean {
+  return !!process.env.ACS_CONNECTION_STRING;
 }
 
 let parsedConnection:
@@ -57,6 +65,7 @@ function getConnection() {
   }
 
   const { endpoint } = parseConnectionString(connectionString);
+
   parsedConnection = {
     endpoint: endpoint.endsWith("/") ? endpoint.slice(0, -1) : endpoint,
     identityClient: new CommunicationIdentityClient(connectionString),
@@ -74,21 +83,22 @@ async function getUserToken(acsUserId: string) {
   return token;
 }
 
-// -------------------------
-// Real ACS chat clients
-// -------------------------
+/* =========================
+   Real ACS clients
+========================= */
 
 class ChatThreadClient {
   constructor(
-    private readonly endpoint: string,
-    private readonly token: string,
-    private readonly threadId: string
+    private endpoint: string,
+    private token: string,
+    private threadId: string
   ) {}
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const url = `${this.endpoint}${path}${
-      path.includes("?") ? "&" : "?"
-    }api-version=${CHAT_API_VERSION}`;
+    const url =
+      `${this.endpoint}${path}` +
+      (path.includes("?") ? "&" : "?") +
+      `api-version=${CHAT_API_VERSION}`;
 
     const res = await fetch(url, {
       ...init,
@@ -108,8 +118,7 @@ class ChatThreadClient {
     }
 
     if (res.status === 204) {
-      // @ts-expect-error - no body for 204
-      return undefined;
+      return undefined as T;
     }
 
     return (await res.json()) as T;
@@ -130,13 +139,6 @@ class ChatThreadClient {
     return response.id;
   }
 
-  async getMessage(messageId: string) {
-    return this.request<AcsMessage>(
-      `/chat/threads/${this.threadId}/messages/${messageId}`,
-      { method: "GET" }
-    );
-  }
-
   async listMessages() {
     const response = await this.request<{ value: AcsMessage[] }>(
       `/chat/threads/${this.threadId}/messages?maxPageSize=50`,
@@ -148,14 +150,15 @@ class ChatThreadClient {
 
 class ChatClient {
   constructor(
-    private readonly endpoint: string,
-    private readonly token: string
+    private endpoint: string,
+    private token: string
   ) {}
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const url = `${this.endpoint}${path}${
-      path.includes("?") ? "&" : "?"
-    }api-version=${CHAT_API_VERSION}`;
+    const url =
+      `${this.endpoint}${path}` +
+      (path.includes("?") ? "&" : "?") +
+      `api-version=${CHAT_API_VERSION}`;
 
     const res = await fetch(url, {
       ...init,
@@ -175,8 +178,7 @@ class ChatClient {
     }
 
     if (res.status === 204) {
-      // @ts-expect-error - no body for 204
-      return undefined;
+      return undefined as T;
     }
 
     return (await res.json()) as T;
@@ -189,14 +191,14 @@ class ChatClient {
       idempotencyToken: crypto.randomUUID(),
     };
 
-    const response = await this.request<{
-      chatThread?: { id?: string };
-      id?: string;
-      chatThreadId?: string;
-    }>("/chat/threads", { method: "POST", body: JSON.stringify(body) });
+    const response = await this.request<any>(
+      "/chat/threads",
+      { method: "POST", body: JSON.stringify(body) }
+    );
 
     const threadId =
       response.chatThread?.id || response.id || response.chatThreadId;
+
     if (!threadId) {
       throw new AcsRestError("ACS did not return a thread id.", 502);
     }
@@ -215,47 +217,25 @@ async function getChatClientForUser(acsUserId: string) {
   return new ChatClient(endpoint, token);
 }
 
-// -------------------------
-// In-memory simulation (no ACS keys)
-// -------------------------
+/* =========================
+   Simulation store
+========================= */
 
 type SimulatedThread = {
   threadId: string;
-  messages: AcsMessage[];
 };
 
-type SimulatedStore = {
-  threads: Record<string, SimulatedThread>;
-};
-
-function getSimulatedStore(): SimulatedStore {
-  const g = globalThis as typeof globalThis & {
-    __acsSimStore?: SimulatedStore;
-  };
-
-  if (!g.__acsSimStore) {
-    g.__acsSimStore = {
-      threads: {},
-    };
+function getSimulatedStore() {
+  const g = globalThis as any;
+  if (!g.__acsSimThreads) {
+    g.__acsSimThreads = new Set<string>();
   }
-
-  return g.__acsSimStore;
+  return g.__acsSimThreads as Set<string>;
 }
 
-function getOrCreateSimulatedThread(threadId: string): SimulatedThread {
-  const store = getSimulatedStore();
-  if (!store.threads[threadId]) {
-    store.threads[threadId] = {
-      threadId,
-      messages: [],
-    };
-  }
-  return store.threads[threadId];
-}
-
-// -------------------------
-// Public API (real or simulated)
-// -------------------------
+/* =========================
+   Public API
+========================= */
 
 export async function createAcsChatThread(options: {
   topic: string;
@@ -263,10 +243,9 @@ export async function createAcsChatThread(options: {
   participants?: Participant[];
 }) {
   if (!isAcsConfigured()) {
-    // Simulated: just create an in-memory thread id
-    const threadId = crypto.randomUUID();
-    getOrCreateSimulatedThread(threadId);
-    return threadId;
+    const id = crypto.randomUUID();
+    getSimulatedStore().add(id);
+    return id;
   }
 
   const participants: Participant[] = [
@@ -279,39 +258,17 @@ export async function createAcsChatThread(options: {
   ];
 
   const client = await getChatClientForUser(options.creatorAcsUserId);
-  const threadId = await client.createChatThread(options.topic, participants);
-  return threadId;
+  return client.createChatThread(options.topic, participants);
 }
 
 export async function sendAcsMessage(options: SendOptions) {
-  if (!options.threadId || !options.content || !options.senderAcsUserId) {
-    throw new AcsRestError("threadId, content, and senderAcsUserId are required.");
-  }
-
   if (!isAcsConfigured()) {
-    const thread = getOrCreateSimulatedThread(options.threadId);
-    const now = new Date().toISOString();
-    const id = crypto.randomUUID();
-
-    const envelope: AcsMessage = {
-      id,
-      type: "text",
-      content: { message: options.content.trim() },
-      senderCommunicationIdentifier: {
-        communicationUserId: options.senderAcsUserId,
-      },
-      createdOn: now,
-    };
-
-    thread.messages.push(envelope);
-
     return {
-      acsMessageId: id,
-      deliveredAt: now,
+      acsMessageId: crypto.randomUUID(),
+      deliveredAt: new Date().toISOString(),
       threadId: options.threadId,
       senderAcsUserId: options.senderAcsUserId,
       content: options.content.trim(),
-      envelope,
       mode: "simulated" as const,
     };
   }
@@ -323,55 +280,23 @@ export async function sendAcsMessage(options: SendOptions) {
     options.content,
     options.senderDisplayName
   );
-  const envelope = await threadClient.getMessage(messageId);
-
-  const deliveredAt = envelope.createdOn ?? new Date().toISOString();
 
   return {
     acsMessageId: messageId,
-    deliveredAt,
+    deliveredAt: new Date().toISOString(),
     threadId: options.threadId,
     senderAcsUserId: options.senderAcsUserId,
     content: options.content.trim(),
-    envelope,
-    mode: "chatClient" as const,
+    mode: "acs" as const,
   };
 }
 
-export async function listAcsMessages(threadId: string, acsUserId: string) {
-  if (!threadId || !acsUserId) {
-    throw new AcsRestError("threadId and acsUserId are required to list messages.");
-  }
-
-  if (!isAcsConfigured()) {
-    const thread = getOrCreateSimulatedThread(threadId);
-    return thread.messages;
-  }
-
-  const client = await getChatClientForUser(acsUserId);
-  const threadClient = client.getChatThreadClient(threadId);
-  return threadClient.listMessages();
+export async function listAcsMessages() {
+  // ACS is transport-only. Content comes from Cosmos.
+  return [];
 }
 
-export async function getAcsMessage(
-  threadId: string,
-  messageId: string,
-  acsUserId: string
-) {
-  if (!threadId || !messageId || !acsUserId) {
-    throw new AcsRestError("threadId, messageId, and acsUserId are required.");
-  }
-
-  if (!isAcsConfigured()) {
-    const thread = getOrCreateSimulatedThread(threadId);
-    const found = thread.messages.find((m) => m.id === messageId);
-    if (!found) {
-      throw new AcsRestError("Simulated message not found.", 404, "NotFound");
-    }
-    return found;
-  }
-
-  const client = await getChatClientForUser(acsUserId);
-  const threadClient = client.getChatThreadClient(threadId);
-  return threadClient.getMessage(messageId);
+export async function getAcsMessage() {
+  // Never block UI on ACS message reads.
+  return null;
 }

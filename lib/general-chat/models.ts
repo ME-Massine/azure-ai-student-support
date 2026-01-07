@@ -78,6 +78,7 @@ export interface UnverifiedAIVerification {
   reason: VerificationFailureReason;
   requiresHumanReview: true;
   createdAt: string;
+  errorDetails?: string;
 }
 
 export type AIVerification =

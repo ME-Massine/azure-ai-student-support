@@ -4,7 +4,6 @@ import {
   AIVerification,
   AugmentedThread,
   ChatMessage,
-  ChatMessageMetadata,
   ChatThread,
   ModerationFlag,
   ModerationSeverity,
@@ -15,11 +14,7 @@ import {
   NewAIVerification,
   isSuccessfulVerification,
 } from "./models";
-import {
-  createAcsChatThread,
-  getAcsMessage,
-  listAcsMessages,
-} from "./acs";
+import { createAcsChatThread } from "./acs";
 
 interface GeneralChatStore {
   users: Record<string, User>;
@@ -36,7 +31,8 @@ function seedRules(): OfficialRule[] {
       schoolId: "demo-school",
       language: "en",
       title: "Attendance Check-in",
-      content: "Students must check in by 8:15 AM and report absences to the office.",
+      content:
+        "Students must check in by 8:15 AM and report absences to the office.",
       category: "attendance",
       lastUpdated: now,
     },
@@ -45,7 +41,8 @@ function seedRules(): OfficialRule[] {
       schoolId: "demo-school",
       language: "en",
       title: "Respectful Conduct",
-      content: "Bullying, harassment, or discriminatory language is prohibited on all channels.",
+      content:
+        "Bullying, harassment, or discriminatory language is prohibited on all channels.",
       category: "behavior",
       lastUpdated: now,
     },
@@ -54,7 +51,8 @@ function seedRules(): OfficialRule[] {
       schoolId: "demo-school",
       language: "en",
       title: "Exam Materials",
-      content: "Personal electronic devices must be stored away during exams unless accommodations apply.",
+      content:
+        "Personal electronic devices must be stored away during exams unless accommodations apply.",
       category: "exams",
       lastUpdated: now,
     },
@@ -93,12 +91,14 @@ async function getContainer(id: string, partitionKey: string): Promise<Container
   return container;
 }
 
+// Partitioning strategy:
+// - Threads: partition by threadId
+// - Messages: partition by threadId
+// - Verifications: partition by messageId
+// - Moderation: partition by messageId
 const threadsContainerPromise = getContainer("chatThreads", "/threadId");
 const messagesContainerPromise = getContainer("chatMessages", "/threadId");
-const verificationsContainerPromise = getContainer(
-  "chatVerifications",
-  "/messageId"
-);
+const verificationsContainerPromise = getContainer("chatVerifications", "/messageId");
 const moderationContainerPromise = getContainer("chatModeration", "/messageId");
 
 function stripCosmosFields<T>(item: WithId<T>): T {
@@ -132,13 +132,15 @@ async function updateMessageVerificationStatus(
   verifiedStatus: VerifiedStatus
 ) {
   const container = await messagesContainerPromise;
+
+  // item(id, partitionKeyValue)
   const { resource } = await container
     .item(messageId, threadId)
-    .read<WithId<ChatMessageMetadata>>();
+    .read<WithId<ChatMessage>>();
 
   if (!resource) return;
 
-  const next: WithId<ChatMessageMetadata> = {
+  const next: WithId<ChatMessage> = {
     ...resource,
     verifiedStatus,
   };
@@ -169,6 +171,9 @@ export async function getOrCreateThread(
     threadRecord = existing;
   } else {
     const now = new Date().toISOString();
+
+    // If ACS is configured, create an ACS chat thread and use that id as threadId.
+    // Otherwise, use a UUID for local/demo usage.
     const threadId = creatorAcsUserId
       ? await createAcsChatThread({
           topic: `School chat for ${schoolId}`,
@@ -193,48 +198,20 @@ export async function getOrCreateThread(
 
 export async function augmentThread(threadId: string): Promise<AugmentedThread> {
   const thread = await getThread(threadId);
-  if (!thread) {
-    throw new Error("Thread not found");
-  }
+  if (!thread) throw new Error("Thread not found");
 
+  // Load full messages (including content) from Cosmos
   const messagesContainer = await messagesContainerPromise;
   const { resources: messageResources } = await messagesContainer.items
-    .query<WithId<ChatMessageMetadata>>({
-      query:
-        "SELECT * FROM c WHERE c.threadId = @threadId ORDER BY c.createdAt",
+    .query<WithId<ChatMessage>>({
+      query: "SELECT * FROM c WHERE c.threadId = @threadId ORDER BY c.createdAt",
       parameters: [{ name: "@threadId", value: threadId }],
     })
     .fetchAll();
 
-  const metadata = messageResources.map(stripCosmosFields);
-  const messageIds = metadata.map((m) => m.messageId);
+  const messages = messageResources.map(stripCosmosFields);
 
-  const acsReader =
-    store.users[thread.createdBy]?.acsUserId ||
-    Object.values(store.users).find((u) => u.schoolId === thread.schoolId)
-      ?.acsUserId;
-  let acsMessages: Awaited<ReturnType<typeof listAcsMessages>> = [];
-  if (acsReader) {
-    try {
-      acsMessages = await listAcsMessages(thread.threadId, acsReader);
-    } catch (error) {
-      console.error("Failed to load ACS messages for thread", error);
-    }
-  }
-  const acsMap = new Map(acsMessages.map((m) => [m.id, m]));
-
-  const messages: ChatMessage[] = metadata.map((meta) => {
-    const acs = acsMap.get(meta.messageId);
-    return {
-      ...meta,
-      content: acs?.content?.message ?? "",
-      senderId:
-        meta.senderId ||
-        acs?.senderCommunicationIdentifier?.communicationUserId ||
-        "unknown",
-      createdAt: acs?.createdOn ?? meta.createdAt,
-    };
-  });
+  const messageIds = messages.map((m) => m.messageId);
 
   const users = Object.values(store.users).filter(
     (u) => u.schoolId === thread.schoolId
@@ -257,13 +234,15 @@ export async function augmentThread(threadId: string): Promise<AugmentedThread> 
   };
 }
 
+// IMPORTANT: Store full ChatMessage in Cosmos, not ChatMessageMetadata.
+// Cosmos becomes the source of truth for chat history and content.
 export async function addMessage(
-  message: Omit<ChatMessageMetadata, "messageId">
-): Promise<ChatMessageMetadata> {
+  message: Omit<ChatMessage, "messageId">
+): Promise<ChatMessage> {
   const messageId = crypto.randomUUID();
   const container = await messagesContainerPromise;
 
-  const next: WithId<ChatMessageMetadata> = {
+  const next: WithId<ChatMessage> = {
     ...message,
     id: messageId,
     messageId,
@@ -277,8 +256,11 @@ export async function findMessage(
   messageId: string
 ): Promise<ChatMessage | undefined> {
   const container = await messagesContainerPromise;
+
+  // messageId is unique; query across partitions is OK for demo,
+  // but for scale you would store (threadId, messageId) references or use point reads.
   const { resources } = await container.items
-    .query<WithId<ChatMessageMetadata>>({
+    .query<WithId<ChatMessage>>({
       query: "SELECT * FROM c WHERE c.messageId = @messageId",
       parameters: [{ name: "@messageId", value: messageId }],
     })
@@ -287,38 +269,7 @@ export async function findMessage(
   const found = resources[0];
   if (!found) return undefined;
 
-  const metadata = stripCosmosFields(found);
-  const thread = await getThread(metadata.threadId);
-  const acsReader =
-    (metadata.senderId && store.users[metadata.senderId]?.acsUserId) ||
-    (thread ? store.users[thread.createdBy]?.acsUserId : undefined) ||
-    (thread
-      ? Object.values(store.users).find((u) => u.schoolId === thread.schoolId)
-          ?.acsUserId
-      : undefined);
-
-  let envelope: Awaited<ReturnType<typeof getAcsMessage>> | undefined;
-  if (acsReader) {
-    try {
-      envelope = await getAcsMessage(
-        metadata.threadId,
-        metadata.messageId,
-        acsReader
-      );
-    } catch (error) {
-      console.error("Failed to fetch ACS message content", error);
-    }
-  }
-
-  return {
-    ...metadata,
-    content: envelope?.content?.message ?? "",
-    createdAt: envelope?.createdOn ?? metadata.createdAt,
-    senderId:
-      metadata.senderId ||
-      envelope?.senderCommunicationIdentifier?.communicationUserId ||
-      "unknown",
-  };
+  return stripCosmosFields(found);
 }
 
 export async function addVerification(
@@ -414,9 +365,7 @@ export async function listModerationFlagsBySeverity(
     .fetchAll();
 
   const flags = resources.map(stripCosmosFields);
-  const messages = await Promise.all(
-    flags.map((flag) => findMessage(flag.messageId))
-  );
+  const messages = await Promise.all(flags.map((flag) => findMessage(flag.messageId)));
 
   return flags.map((flag, index) => ({
     ...flag,

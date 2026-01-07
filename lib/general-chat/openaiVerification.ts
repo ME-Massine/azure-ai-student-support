@@ -44,11 +44,15 @@ function parseVerificationResponse(content: string) {
     verificationResult === "incorrect";
 
   if (!isValidResult || typeof explanation !== "string") {
-    throw new Error("Azure OpenAI verification response missing required fields");
+    throw new Error(
+      "Azure OpenAI verification response missing required fields"
+    );
   }
 
   const officialSourceIds = Array.isArray(parsed.officialSourceIds)
-    ? parsed.officialSourceIds.filter((id: unknown): id is string => typeof id === "string")
+    ? parsed.officialSourceIds.filter(
+        (id: unknown): id is string => typeof id === "string"
+      )
     : [];
 
   return {
@@ -62,11 +66,18 @@ async function callAzureVerification(
   message: ChatMessage,
   rules: OfficialRule[]
 ): Promise<NewAIVerification> {
-  const { AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION } =
-    process.env;
+  const {
+    AZURE_OPENAI_API_KEY,
+    AZURE_OPENAI_DEPLOYMENT,
+    AZURE_OPENAI_API_VERSION,
+  } = process.env;
   const endpointRaw = process.env.AZURE_OPENAI_ENDPOINT;
 
-  if (!AZURE_OPENAI_API_KEY || !AZURE_OPENAI_DEPLOYMENT || !AZURE_OPENAI_API_VERSION) {
+  if (
+    !AZURE_OPENAI_API_KEY ||
+    !AZURE_OPENAI_DEPLOYMENT ||
+    !AZURE_OPENAI_API_VERSION
+  ) {
     throw new Error("Azure OpenAI credentials are missing");
   }
 
@@ -82,12 +93,11 @@ async function callAzureVerification(
       },
       { role: "user", content: prompt },
     ],
-    temperature: 0,
-    max_tokens: 1000,
+    max_completion_tokens: 1000,
   };
 
   const requestUrl = `${endpoint}openai/deployments/${AZURE_OPENAI_DEPLOYMENT}/chat/completions?api-version=${AZURE_OPENAI_API_VERSION}`;
-  
+
   // Log request details for debugging (without sensitive data)
   console.log("Azure OpenAI verification request:", {
     endpoint: endpoint,
@@ -121,7 +131,10 @@ async function callAzureVerification(
         errorMessage += ` - ${errorBody}`;
       }
       // Log full error details for debugging
-      console.error("Azure OpenAI API error response:", JSON.stringify(errorBody, null, 2));
+      console.error(
+        "Azure OpenAI API error response:",
+        JSON.stringify(errorBody, null, 2)
+      );
     } catch (parseError) {
       // If we can't parse the error body, try to get text
       try {
@@ -130,7 +143,9 @@ async function callAzureVerification(
         errorMessage += ` - ${errorText.substring(0, 200)}`;
       } catch {
         // If we can't read the body at all, use the status text
-        console.error("Azure OpenAI API error: Could not read error response body");
+        console.error(
+          "Azure OpenAI API error: Could not read error response body"
+        );
       }
     }
     const enhancedError = new Error(errorMessage);
@@ -165,8 +180,10 @@ export async function verifyMessageAgainstRules(
     return await callAzureVerification(message, rules);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStatus = (error as any)?.status;
     const errorDetails = {
       message: errorMessage,
+      status: errorStatus,
       messageId: message.messageId,
       hasRules: rules.length > 0,
       envVars: {
@@ -177,12 +194,41 @@ export async function verifyMessageAgainstRules(
       },
     };
     console.error("Azure OpenAI verification unavailable", errorDetails, error);
+
+    // Create a more informative error message
+    let diagnosticMessage = "Azure OpenAI verification failed";
+    if (
+      !errorDetails.envVars.hasApiKey ||
+      !errorDetails.envVars.hasDeployment ||
+      !errorDetails.envVars.hasApiVersion ||
+      !errorDetails.envVars.hasEndpoint
+    ) {
+      diagnosticMessage =
+        "Azure OpenAI configuration incomplete. Check environment variables: AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_ENDPOINT";
+    } else if (errorStatus === 401) {
+      diagnosticMessage =
+        "Azure OpenAI authentication failed. Check your API key.";
+    } else if (errorStatus === 404) {
+      diagnosticMessage =
+        "Azure OpenAI deployment not found. Check your deployment name.";
+    } else if (errorStatus === 429) {
+      diagnosticMessage =
+        "Azure OpenAI rate limit exceeded. Please try again later.";
+    } else if (errorStatus) {
+      diagnosticMessage = `Azure OpenAI API error (${errorStatus}): ${errorMessage}`;
+    } else {
+      diagnosticMessage = `Azure OpenAI error: ${errorMessage}`;
+    }
+
     return {
       messageId: message.messageId,
       verdict: "unverified",
       reason: "ai_unavailable",
       requiresHumanReview: true,
       createdAt: new Date().toISOString(),
-    } as Omit<UnverifiedAIVerification, "verificationId">;
+      errorDetails: diagnosticMessage,
+    } as Omit<UnverifiedAIVerification, "verificationId"> & {
+      errorDetails?: string;
+    };
   }
 }
