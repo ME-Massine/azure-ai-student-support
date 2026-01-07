@@ -1,13 +1,34 @@
-import { database } from "./client";
+import { Container } from "@azure/cosmos";
+import { getDatabase } from "./client";
 
-export const threadsContainer =
-  database.container(process.env.COSMOS_CONTAINER_THREADS!);
+export function getThreadsContainer(): Container {
+  const containerName = process.env.COSMOS_CONTAINER_THREADS;
+  if (!containerName) {
+    throw new Error("COSMOS_CONTAINER_THREADS is not configured");
+  }
+  return getDatabase().container(containerName);
+}
 
-export const messagesContainer =
-  database.container(process.env.COSMOS_CONTAINER_MESSAGES!);
+export function getMessagesContainer(): Container {
+  const containerName = process.env.COSMOS_CONTAINER_MESSAGES;
+  if (!containerName) {
+    throw new Error("COSMOS_CONTAINER_MESSAGES is not configured");
+  }
+  return getDatabase().container(containerName);
+}
 
-export const aiVerificationsContainer =
-  database.container(process.env.COSMOS_CONTAINER_AI_VERIFICATIONS!);
+export function getAiVerificationsContainer(): Container {
+  const containerName = process.env.COSMOS_CONTAINER_AI_VERIFICATIONS;
+  if (!containerName) {
+    throw new Error("COSMOS_CONTAINER_AI_VERIFICATIONS is not configured");
+  }
+  return getDatabase().container(containerName);
+}
 
-export const moderationFlagsContainer =
-  database.container(process.env.COSMOS_CONTAINER_MODERATION_FLAGS!);
+export function getModerationFlagsContainer(): Container {
+  const containerName = process.env.COSMOS_CONTAINER_MODERATION_FLAGS;
+  if (!containerName) {
+    throw new Error("COSMOS_CONTAINER_MODERATION_FLAGS is not configured");
+  }
+  return getDatabase().container(containerName);
+}
