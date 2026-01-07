@@ -4,6 +4,8 @@ import { listModerationFlagsBySeverity } from "@/lib/general-chat/store";
 import type { ModerationFlagDetail } from "@/lib/general-chat/store";
 import type { ModerationSeverity } from "@/lib/general-chat/models";
 
+export const dynamic = 'force-dynamic';
+
 const VALID_SEVERITIES: ModerationSeverity[] = ["low", "medium", "high"];
 
 export async function GET(req: Request) {

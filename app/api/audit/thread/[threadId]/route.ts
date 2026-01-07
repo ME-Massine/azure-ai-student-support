@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { augmentThread } from "@/lib/general-chat/store";
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ threadId: string }> }

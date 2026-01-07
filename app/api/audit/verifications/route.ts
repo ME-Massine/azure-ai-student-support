@@ -4,6 +4,8 @@ import { listVerificationsByResult } from "@/lib/general-chat/store";
 import type { VerificationDetail } from "@/lib/general-chat/store";
 import type { VerificationResult } from "@/lib/general-chat/models";
 
+export const dynamic = 'force-dynamic';
+
 const STATUS_MAP: Record<string, VerificationResult> = {
   confirmed: "confirmed",
   partial: "partially_correct",

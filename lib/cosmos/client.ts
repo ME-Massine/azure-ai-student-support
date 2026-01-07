@@ -1,8 +1,31 @@
-import { CosmosClient } from "@azure/cosmos";
+import { CosmosClient, Database } from "@azure/cosmos";
 
-const endpoint = process.env.COSMOS_ENDPOINT!;
-const key = process.env.COSMOS_KEY!;
-const databaseId = process.env.COSMOS_DATABASE_ID!;
+let cosmosClient: CosmosClient | null = null;
+let databaseInstance: Database | null = null;
 
-export const cosmos = new CosmosClient({ endpoint, key });
-export const database = cosmos.database(databaseId);
+export function getCosmosClient(): CosmosClient {
+  if (cosmosClient) return cosmosClient;
+  
+  const endpoint = process.env.COSMOS_ENDPOINT;
+  const key = process.env.COSMOS_KEY;
+  
+  if (!endpoint || !key) {
+    throw new Error("Cosmos DB credentials are not configured");
+  }
+  
+  cosmosClient = new CosmosClient({ endpoint, key });
+  return cosmosClient;
+}
+
+export function getDatabase(): Database {
+  if (databaseInstance) return databaseInstance;
+  
+  const databaseId = process.env.COSMOS_DATABASE_ID;
+  if (!databaseId) {
+    throw new Error("COSMOS_DATABASE_ID is not configured");
+  }
+  
+  const client = getCosmosClient();
+  databaseInstance = client.database(databaseId);
+  return databaseInstance;
+}

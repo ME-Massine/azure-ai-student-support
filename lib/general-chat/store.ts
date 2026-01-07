@@ -1,5 +1,5 @@
 import { Container } from "@azure/cosmos";
-import { database } from "@/lib/cosmos/client";
+import { getDatabase } from "@/lib/cosmos/client";
 import {
   AIVerification,
   AugmentedThread,
@@ -85,6 +85,7 @@ if (!(globalThis as any).__generalChatStore) {
 export const store: GeneralChatStore = globalStore;
 
 async function getContainer(id: string, partitionKey: string): Promise<Container> {
+  const database = getDatabase();
   const { container } = await database.containers.createIfNotExists({
     id,
     partitionKey: { paths: [partitionKey] },
