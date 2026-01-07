@@ -103,7 +103,7 @@ const moderationContainerPromise = getContainer("chatModeration", "/messageId");
 function stripCosmosFields<T>(item: WithId<T>): T {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { id: _id, ...rest } = item;
-  return rest;
+  return rest as T;
 }
 
 export function upsertUser(user: User) {
@@ -331,7 +331,7 @@ export async function addVerification(
     ...verification,
     id: verificationId,
     verificationId,
-  };
+  } as WithId<AIVerification>;
 
   await container.items.create(record);
 

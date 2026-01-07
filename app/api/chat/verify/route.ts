@@ -77,14 +77,14 @@ export async function POST(req: Request) {
   };
 
   if (safety.blocked) {
-    const systemAcsMessage =
-      senderAcsUserId &&
-      (await sendAcsMessage({
-        threadId: message.threadId,
-        content: "This message could not be posted due to school safety policy.",
-        senderAcsUserId,
-        senderDisplayName: "System",
-      }));
+    const systemAcsMessage = senderAcsUserId
+      ? await sendAcsMessage({
+          threadId: message.threadId,
+          content: "This message could not be posted due to school safety policy.",
+          senderAcsUserId,
+          senderDisplayName: "System",
+        })
+      : null;
 
     const systemMessage = await addMessage({
       threadId: message.threadId,
@@ -114,14 +114,14 @@ export async function POST(req: Request) {
     });
   }
 
-  const acsVerification =
-    senderAcsUserId &&
-    (await sendAcsMessage({
-      threadId: message.threadId,
-      content: aiContent,
-      senderAcsUserId,
-      senderDisplayName: "AI Verifier",
-    }));
+  const acsVerification = senderAcsUserId
+    ? await sendAcsMessage({
+        threadId: message.threadId,
+        content: aiContent,
+        senderAcsUserId,
+        senderDisplayName: "AI Verifier",
+      })
+    : null;
 
   const aiMessage = await addMessage({
     threadId: message.threadId,

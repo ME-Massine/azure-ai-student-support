@@ -5,11 +5,18 @@ export async function POST() {
   try {
     const connectionString = process.env.ACS_CONNECTION_STRING;
 
+    // When no ACS connection string is configured, return a simulated identity
+    // so the demo can run end-to-end without Azure ACS.
     if (!connectionString) {
-      return NextResponse.json(
-        { error: "ACS connection string not configured" },
-        { status: 503 }
-      );
+      const now = new Date();
+      const expiresOn = new Date(now.getTime() + 60 * 60 * 1000); // +1 hour
+
+      return NextResponse.json({
+        acsUserId: `sim-${crypto.randomUUID()}`,
+        token: "simulated-acs-token",
+        expiresOn,
+        simulated: true,
+      });
     }
 
     const identityClient = new CommunicationIdentityClient(connectionString);
@@ -21,6 +28,7 @@ export async function POST() {
       acsUserId: user.communicationUserId,
       token: token.token,
       expiresOn: token.expiresOn,
+      simulated: false,
     });
   } catch (error) {
     console.error("ACS identity creation failed:", error);

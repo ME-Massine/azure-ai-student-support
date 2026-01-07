@@ -3,6 +3,8 @@ import {
   OfficialRule,
   NewAIVerification,
   VerificationResult,
+  SuccessfulAIVerification,
+  UnverifiedAIVerification,
 } from "./models";
 
 function normalizeAzureEndpoint(raw: string | undefined) {
@@ -71,30 +73,70 @@ async function callAzureVerification(
   const endpoint = normalizeAzureEndpoint(endpointRaw);
   const prompt = composePrompt(message, rules);
 
-  const response = await fetch(
-    `${endpoint}openai/deployments/${AZURE_OPENAI_DEPLOYMENT}/chat/completions?api-version=${AZURE_OPENAI_API_VERSION}`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": AZURE_OPENAI_API_KEY,
+  const requestBody = {
+    messages: [
+      {
+        role: "system",
+        content:
+          "You only return JSON with keys verificationResult, explanation, officialSourceIds.",
       },
-      body: JSON.stringify({
-        messages: [
-          {
-            role: "system",
-            content:
-              "You only return JSON with keys verificationResult, explanation, officialSourceIds.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0,
-      }),
-    }
-  );
+      { role: "user", content: prompt },
+    ],
+    temperature: 0,
+    max_tokens: 1000,
+  };
+
+  const requestUrl = `${endpoint}openai/deployments/${AZURE_OPENAI_DEPLOYMENT}/chat/completions?api-version=${AZURE_OPENAI_API_VERSION}`;
+  
+  // Log request details for debugging (without sensitive data)
+  console.log("Azure OpenAI verification request:", {
+    endpoint: endpoint,
+    deployment: AZURE_OPENAI_DEPLOYMENT,
+    apiVersion: AZURE_OPENAI_API_VERSION,
+    messageLength: message.content.length,
+    rulesCount: rules.length,
+    promptLength: prompt.length,
+  });
+
+  const response = await fetch(requestUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": AZURE_OPENAI_API_KEY,
+    },
+    body: JSON.stringify(requestBody),
+  });
 
   if (!response.ok) {
-    throw new Error(`Azure OpenAI verification failed: ${response.status}`);
+    let errorMessage = `Azure OpenAI verification failed: ${response.status} ${response.statusText}`;
+    let errorDetails: any = null;
+    try {
+      const errorBody = await response.json();
+      errorDetails = errorBody;
+      if (errorBody.error?.message) {
+        errorMessage += ` - ${errorBody.error.message}`;
+      } else if (errorBody.error?.code) {
+        errorMessage += ` - Code: ${errorBody.error.code}`;
+      } else if (typeof errorBody === "string") {
+        errorMessage += ` - ${errorBody}`;
+      }
+      // Log full error details for debugging
+      console.error("Azure OpenAI API error response:", JSON.stringify(errorBody, null, 2));
+    } catch (parseError) {
+      // If we can't parse the error body, try to get text
+      try {
+        const errorText = await response.text();
+        console.error("Azure OpenAI API error (non-JSON):", errorText);
+        errorMessage += ` - ${errorText.substring(0, 200)}`;
+      } catch {
+        // If we can't read the body at all, use the status text
+        console.error("Azure OpenAI API error: Could not read error response body");
+      }
+    }
+    const enhancedError = new Error(errorMessage);
+    (enhancedError as any).status = response.status;
+    (enhancedError as any).details = errorDetails;
+    throw enhancedError;
   }
 
   const json = await response.json();
@@ -112,7 +154,7 @@ async function callAzureVerification(
     explanation: parsed.explanation,
     officialSourceIds: parsed.officialSourceIds,
     createdAt: new Date().toISOString(),
-  };
+  } as Omit<SuccessfulAIVerification, "verificationId">;
 }
 
 export async function verifyMessageAgainstRules(
@@ -122,13 +164,25 @@ export async function verifyMessageAgainstRules(
   try {
     return await callAzureVerification(message, rules);
   } catch (error) {
-    console.error("Azure OpenAI verification unavailable", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorDetails = {
+      message: errorMessage,
+      messageId: message.messageId,
+      hasRules: rules.length > 0,
+      envVars: {
+        hasApiKey: !!process.env.AZURE_OPENAI_API_KEY,
+        hasDeployment: !!process.env.AZURE_OPENAI_DEPLOYMENT,
+        hasApiVersion: !!process.env.AZURE_OPENAI_API_VERSION,
+        hasEndpoint: !!process.env.AZURE_OPENAI_ENDPOINT,
+      },
+    };
+    console.error("Azure OpenAI verification unavailable", errorDetails, error);
     return {
       messageId: message.messageId,
       verdict: "unverified",
       reason: "ai_unavailable",
       requiresHumanReview: true,
       createdAt: new Date().toISOString(),
-    };
+    } as Omit<UnverifiedAIVerification, "verificationId">;
   }
 }

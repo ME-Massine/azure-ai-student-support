@@ -41,15 +41,15 @@ export async function POST(req: Request) {
   let systemMessage = null;
   if (moderation.actionTaken === "warning_posted") {
     const senderAcsUserId = store.users[message.senderId]?.acsUserId;
-    const systemAcsMessage =
-      senderAcsUserId &&
-      (await sendAcsMessage({
-        threadId: message.threadId,
-        content:
-          "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.",
-        senderAcsUserId,
-        senderDisplayName: "System",
-      }));
+    const systemAcsMessage = senderAcsUserId
+      ? await sendAcsMessage({
+          threadId: message.threadId,
+          content:
+            "This message triggered safety filters and has been escalated to a moderator. Please keep the conversation respectful.",
+          senderAcsUserId,
+          senderDisplayName: "System",
+        })
+      : null;
 
     systemMessage = await addMessage({
       threadId: message.threadId,

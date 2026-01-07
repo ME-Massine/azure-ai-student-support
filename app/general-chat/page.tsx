@@ -864,7 +864,7 @@ function ChatTimeline({
                     <div className={styles.detailLabel}>Official Sources</div>
                     <div className={styles.detailBody}>
                       {officialSourcesByMessage[message.messageId]?.length
-                        ? officialSourcesByMessage[message.messageId].join(", ")
+                        ? officialSourcesByMessage[message.messageId]?.join(", ")
                         : "None referenced"}
                     </div>
                   </div>

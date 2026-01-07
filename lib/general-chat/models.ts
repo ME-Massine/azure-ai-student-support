@@ -91,10 +91,12 @@ export function isSuccessfulVerification(
 ): verification is
   | SuccessfulAIVerification
   | (NewAIVerification & { verificationResult: VerificationResult; verdict: VerificationResult }) {
+  if (verification.verdict === "unverified") {
+    return false;
+  }
   return (
     "verificationResult" in verification &&
-    verification.verificationResult !== undefined &&
-    verification.verdict !== "unverified"
+    verification.verificationResult !== undefined
   );
 }
 

@@ -1,15 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { augmentThread } from "@/lib/general-chat/store";
 
-interface RouteParams {
-  params: {
-    threadId: string;
-  };
-}
-
-export async function GET(_req: Request, { params }: RouteParams) {
-  const threadId = params.threadId;
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ threadId: string }> }
+) {
+  const { threadId } = await params;
   if (!threadId) {
     return NextResponse.json(
       { error: "threadId is required." },
