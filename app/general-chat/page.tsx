@@ -323,10 +323,21 @@ export default function GeneralChatPage() {
         }),
       });
 
-      const data = await res.json().catch(() => null);
+      let data: any = null;
+      try {
+        data = await res.json();
+      } catch {
+        // Response might not be JSON
+      }
 
-      if (!res.ok || !data) {
-        setStatus("Message failed to send.");
+      if (!res.ok) {
+        const errorMessage = data?.error || `HTTP ${res.status}: ${res.statusText}`;
+        setStatus(`Message failed to send: ${errorMessage}`);
+        return;
+      }
+
+      if (!data) {
+        setStatus("Message failed to send: Invalid response from server.");
         return;
       }
 

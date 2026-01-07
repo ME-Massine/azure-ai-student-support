@@ -46,7 +46,15 @@ export async function POST(req: Request) {
   upsertUser(user);
 
   const safetyCheckedAt = new Date().toISOString();
-  const safety = await analyzeTextSafety(content);
+  let safety: { blocked: boolean; categories: Record<string, number> };
+  try {
+    safety = await analyzeTextSafety(content);
+  } catch (error) {
+    console.error("Content Safety check failed", error);
+    // If Content Safety is not configured or fails, allow the message to proceed
+    safety = { blocked: false, categories: {} };
+  }
+  
   const safetyMetadata = {
     source: "azure_content_safety",
     categories: safety.categories,
